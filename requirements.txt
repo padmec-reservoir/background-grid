@@ -1,1 +1,2 @@
 numpy
+Rtree>=0.9.7

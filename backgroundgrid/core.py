@@ -34,7 +34,7 @@ class BackgroundGrid(object):
         all_finescale_volumes = self.finescale_mesh.volumes.all[:]
         finescale_bg_volumes_values = self.finescale_mesh.bg_volume[:].flatten()
 
-        finescale_volumes_by_bg_value = list(zip(finescale_bg_volumes_values, all_finescale_volumes))
+        finescale_volumes_by_bg_value = zip(finescale_bg_volumes_values, all_finescale_volumes)
         def keyfunc(it): return it[0]
         sorted_finescale_volumes_by_bg_value = sorted(finescale_volumes_by_bg_value, key=keyfunc)
 

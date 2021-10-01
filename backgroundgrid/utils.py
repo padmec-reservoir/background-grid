@@ -24,3 +24,7 @@ def find_aabb_of_volumes(volumes: np.ndarray) -> np.ndarray:
     z_min, z_max = volumes[:, :, 2].min(axis=1), volumes[:, :, 2].max(axis=1)
     all_bboxes = np.vstack((x_min, y_min, z_min, x_max, y_max, z_max)).T
     return all_bboxes
+
+
+def list_argmax(l: list) -> int:
+    return max(zip(l, range(len(l))))[1]

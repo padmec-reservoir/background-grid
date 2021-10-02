@@ -11,6 +11,9 @@ class BackgroundGrid(object):
         self.finescale_mesh = FineScaleMesh(finescale_mesh_file)
         self.bg_mesh = FineScaleMesh(bg_mesh_file)
 
+        self.finescale_mesh.primal_volume_center[:] = -1
+        self.finescale_mesh.primal_face_center[:] = -1
+
     def run(self) -> None:
         pass
 
@@ -74,7 +77,39 @@ class BackgroundGrid(object):
         pass
 
     def compute_primal_centers(self) -> None:
-        pass
+        bg_volumes = self.bg_mesh.volumes.all[:]
+        bg_volumes_centroids = self.bg_mesh.volumes.center[:]
+        fine_volumes_bg_volume_values = self.finescale_mesh.bg_volume[:].flatten()
+
+        for bg_vol_id, bg_vol_center in zip(bg_volumes, bg_volumes_centroids):
+            # Retrieve volumes in the background grid volume.
+            fine_volumes_centers_in_bg_vol = self.finescale_mesh.volumes.center[fine_volumes_bg_volume_values ==
+                                                                                bg_vol_id]
+
+            # Compute primal volume centers.
+            vol_centers_distance = np.linalg.norm(fine_volumes_centers_in_bg_vol - bg_vol_center, axis=1)
+            primal_volume_center = np.argmin(vol_centers_distance)
+            self.finescale_mesh.primal_volume_center[primal_volume_center] = 1
+
+            # Compute the centers of the primal volume's faces.
+            bg_vol_faces = self.bg_mesh.volumes.adjacencies[bg_vol_id]
+            bg_vol_faces_centers = self.bg_mesh.faces.center[bg_vol_faces]
+
+            # Find the fine faces in the BG volume boundary.
+            fine_volumes_in_bg_volume = self.finescale_mesh.volumes.all[fine_volumes_bg_volume_values == bg_vol_id]
+            fine_faces_in_bg_volume = np.unique(
+                self.finescale_mesh.volumes.adjacencies[fine_volumes_in_bg_volume].flatten())
+            fine_faces_neighbors = self.finescale_mesh.faces.bridge_adjacencies(fine_faces_in_bg_volume, 2, 3)
+            boundary_fine_faces_mask = [(~np.isin(neighbors, fine_volumes_in_bg_volume)).any()
+                                        for neighbors in fine_faces_neighbors]
+            boundary_fine_faces = fine_faces_in_bg_volume[boundary_fine_faces_mask]
+            boundary_fine_faces_centers = self.finescale_mesh.faces.center[boundary_fine_faces]
+
+            # Compute primal faces centers.
+            primal_faces_centers_mask = [np.linalg.norm(boundary_fine_faces_centers - c, axis=1).argmin()
+                                         for c in bg_vol_faces_centers]
+            primal_faces_centers = boundary_fine_faces[primal_faces_centers_mask]
+            self.finescale_mesh.primal_face_center[primal_faces_centers] = 1
 
     def primal_face_to_center_path(self) -> None:
         pass

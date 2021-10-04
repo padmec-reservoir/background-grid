@@ -11,6 +11,9 @@ class BackgroundGrid(object):
         self.finescale_mesh = FineScaleMesh(finescale_mesh_file)
         self.bg_mesh = FineScaleMesh(bg_mesh_file)
 
+        all_fine_vols = self.finescale_mesh.volumes.all[:]
+        self.all_fine_volumes_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(all_fine_vols, 2, 3)
+
         self.finescale_mesh.primal_volume_center[:] = -1
         self.finescale_mesh.primal_face_center[:] = -1
 
@@ -31,7 +34,24 @@ class BackgroundGrid(object):
             self.finescale_mesh.bg_volume[centroids_in_bg_volume] = int(bg_id)
 
     def fix_primal_volume_assignment(self) -> None:
-        pass
+        disconnected_clusters = self.get_disconnected_clusters()
+
+        while len(disconnected_clusters) > 0:
+            disconnected_volumes = list(itertools.chain.from_iterable(disconnected_clusters))
+
+            while len(disconnected_volumes) > 0:
+                vol = disconnected_volumes.pop(0)
+                vol_neighbors = self.all_fine_volumes_neighbors[vol]
+                not_disconnected_neighbors = ~np.isin(vol_neighbors, disconnected_volumes)
+
+                if np.any(not_disconnected_neighbors):
+                    a_neighbor = vol_neighbors[not_disconnected_neighbors][0]
+                    new_bg_volume_value = self.finescale_mesh.bg_volume[a_neighbor][0, 0]
+                    self.finescale_mesh.bg_volume[vol] = int(new_bg_volume_value)
+                else:
+                    disconnected_volumes.append(vol)
+
+            disconnected_clusters = self.get_disconnected_clusters()
 
     def get_disconnected_clusters(self) -> list:
         all_finescale_volumes = self.finescale_mesh.volumes.all[:]
@@ -49,7 +69,7 @@ class BackgroundGrid(object):
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
 
         for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
-            face_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(cluster, 2, 3)
+            face_neighbors = self.all_fine_volumes_neighbors[cluster]
             all_face_connections = [[(neighbor, vol) for neighbor in neighbors if neighbor in cluster]
                                     for vol, neighbors in zip(cluster, face_neighbors)]
             G.add_edges_from(itertools.chain.from_iterable(all_face_connections))

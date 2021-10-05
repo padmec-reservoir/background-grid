@@ -54,18 +54,7 @@ class BackgroundGrid(object):
             disconnected_clusters = self.get_disconnected_clusters()
 
     def get_disconnected_clusters(self) -> list:
-        all_finescale_volumes = self.finescale_mesh.volumes.all[:]
-        finescale_bg_volumes_values = self.finescale_mesh.bg_volume[:].flatten()
-
-        finescale_volumes_by_bg_value = zip(finescale_bg_volumes_values, all_finescale_volumes)
-        def keyfunc(it): return it[0]
-        sorted_finescale_volumes_by_bg_value = sorted(finescale_volumes_by_bg_value, key=keyfunc)
-
-        finescale_volumes_grouped_by_bg_value = [list(bg_value_id_pairs) for _, bg_value_id_pairs in itertools.groupby(
-            sorted_finescale_volumes_by_bg_value, keyfunc)]
-        finescale_clusters = [
-            [vol_bg_value_pair[1] for vol_bg_value_pair in bg_value_id_pairs]
-            for bg_value_id_pairs in finescale_volumes_grouped_by_bg_value]
+        finescale_clusters = self.group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
 
         for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
@@ -131,3 +120,19 @@ class BackgroundGrid(object):
 
     def primal_face_to_center_path(self) -> None:
         pass
+
+    def group_fine_volumes_by_bg_value(self):
+        all_finescale_volumes = self.finescale_mesh.volumes.all[:]
+        finescale_bg_volumes_values = self.finescale_mesh.bg_volume[:].flatten()
+
+        finescale_volumes_by_bg_value = zip(finescale_bg_volumes_values, all_finescale_volumes)
+        def keyfunc(it): return it[0]
+        sorted_finescale_volumes_by_bg_value = sorted(finescale_volumes_by_bg_value, key=keyfunc)
+
+        finescale_volumes_grouped_by_bg_value = [list(bg_value_id_pairs) for _, bg_value_id_pairs in itertools.groupby(
+            sorted_finescale_volumes_by_bg_value, keyfunc)]
+        finescale_clusters = [
+            [vol_bg_value_pair[1] for vol_bg_value_pair in bg_value_id_pairs]
+            for bg_value_id_pairs in finescale_volumes_grouped_by_bg_value]
+
+        return finescale_clusters

@@ -91,9 +91,6 @@ class BackgroundGrid(object):
 
         return finescale_non_connected_clusters_components_flat
 
-    def assemble_primal_volumes(self) -> None:
-        pass
-
     def set_primal_coarse_faces(self) -> None:
         pass
 

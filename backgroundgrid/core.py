@@ -69,6 +69,7 @@ class BackgroundGrid(object):
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
 
         for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
+            G.add_nodes_from(cluster)
             face_neighbors = self.all_fine_volumes_neighbors[cluster]
             all_face_connections = [[(neighbor, vol) for neighbor in neighbors if neighbor in cluster]
                                     for vol, neighbors in zip(cluster, face_neighbors)]

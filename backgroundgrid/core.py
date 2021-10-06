@@ -14,9 +14,6 @@ class BackgroundGrid(object):
         all_fine_vols = self.finescale_mesh.volumes.all[:]
         self.all_fine_volumes_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(all_fine_vols, 2, 3)
 
-        self.finescale_mesh.primal_volume_center[:] = -1
-        self.finescale_mesh.primal_face_center[:] = -1
-
     def run(self) -> None:
         pass
 

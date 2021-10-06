@@ -47,3 +47,10 @@ primal_face_center:
   data type: int
   sparse: True
   level: 0
+
+primal_face:
+  type: faces
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0

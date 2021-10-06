@@ -53,6 +53,13 @@ class BackgroundGrid(object):
 
             disconnected_clusters = self.get_disconnected_clusters()
 
+        all_clusters = self.group_fine_volumes_by_bg_value()
+        singletons = [cluster[0] for cluster in all_clusters if len(cluster) == 1]
+        singletons_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(singletons, 2, 3)
+        new_bg_values_of_singletons = [self.finescale_mesh.bg_volume[neighbors[0]][0, 0]
+                                       for neighbors in singletons_neighbors]
+        self.finescale_mesh.bg_volume[singletons] = new_bg_values_of_singletons
+
     def get_disconnected_clusters(self) -> list:
         finescale_clusters = self.group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]

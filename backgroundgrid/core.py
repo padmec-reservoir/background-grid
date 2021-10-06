@@ -87,8 +87,18 @@ class BackgroundGrid(object):
 
         return finescale_non_connected_clusters_components_flat
 
-    def set_primal_coarse_faces(self) -> None:
-        pass
+    def set_primal_coarse_faces(self):
+        fine_volumes_clusters = self.group_fine_volumes_by_bg_value()
+        clusters_fine_faces = [self.finescale_mesh.volumes.adjacencies[cluster]
+                               for cluster in fine_volumes_clusters]
+
+        for cluster, cluster_faces in zip(fine_volumes_clusters, clusters_fine_faces):
+            cluster_faces_flat = np.unique(np.concatenate(cluster_faces))
+            adjacent_volumes = self.finescale_mesh.faces.bridge_adjacencies(cluster_faces_flat, 2, 3)
+            primal_faces_mask = [(len(vols) == 1) | np.any(~np.isin(vols, cluster))
+                                 for vols in adjacent_volumes]
+            primal_faces = cluster_faces_flat[primal_faces_mask]
+            self.finescale_mesh.primal_face[primal_faces] = 1
 
     def compute_primal_centers(self) -> None:
         bg_volumes = self.bg_mesh.volumes.all[:]

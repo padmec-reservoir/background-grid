@@ -54,3 +54,10 @@ primal_face:
   data type: int
   sparse: True
   level: 0
+
+dual_mesh_edge:
+  type: volumes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0

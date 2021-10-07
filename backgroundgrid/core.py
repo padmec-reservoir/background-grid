@@ -50,7 +50,7 @@ class BackgroundGrid(object):
 
             disconnected_clusters = self.get_disconnected_clusters()
 
-        all_clusters = self.group_fine_volumes_by_bg_value()
+        all_clusters = self._group_fine_volumes_by_bg_value()
         singletons = [cluster[0] for cluster in all_clusters if len(cluster) == 1]
         singletons_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(singletons, 2, 3)
         new_bg_values_of_singletons = [self.finescale_mesh.bg_volume[neighbors[0]][0, 0]
@@ -58,7 +58,7 @@ class BackgroundGrid(object):
         self.finescale_mesh.bg_volume[singletons] = new_bg_values_of_singletons
 
     def get_disconnected_clusters(self) -> list:
-        finescale_clusters = self.group_fine_volumes_by_bg_value()
+        finescale_clusters = self._group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
 
         for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
@@ -85,7 +85,7 @@ class BackgroundGrid(object):
         return finescale_non_connected_clusters_components_flat
 
     def set_primal_coarse_faces(self):
-        fine_volumes_clusters = self.group_fine_volumes_by_bg_value()
+        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
         clusters_fine_faces = [self.finescale_mesh.volumes.adjacencies[cluster]
                                for cluster in fine_volumes_clusters]
 
@@ -99,7 +99,7 @@ class BackgroundGrid(object):
 
     def compute_primal_centers(self) -> None:
         fine_volumes_bg_volume_values = self.finescale_mesh.bg_volume[:].flatten()
-        fine_volumes_clusters = self.group_fine_volumes_by_bg_value()
+        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
 
         for cluster in fine_volumes_clusters:
             bg_vol_id = int(self.finescale_mesh.bg_volume[cluster[0]][0, 0])
@@ -132,7 +132,7 @@ class BackgroundGrid(object):
     def primal_face_to_center_path(self) -> None:
         pass
 
-    def group_fine_volumes_by_bg_value(self):
+    def _group_fine_volumes_by_bg_value(self):
         all_finescale_volumes = self.finescale_mesh.volumes.all[:]
         finescale_bg_volumes_values = self.finescale_mesh.bg_volume[:].flatten()
 

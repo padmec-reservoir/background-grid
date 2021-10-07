@@ -129,8 +129,40 @@ class BackgroundGrid(object):
             primal_faces_centers = boundary_fine_faces[primal_faces_centers_mask]
             self.finescale_mesh.primal_face_center[primal_faces_centers] = 1
 
-    def primal_face_to_center_path(self) -> None:
-        pass
+    def compute_dual_mesh_edges(self) -> None:
+        # First, retrieve the primal volumes clusters and its faces.
+        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
+        clusters_faces = [np.unique(self.finescale_mesh.volumes.adjacencies[cluster].flatten())
+                          for cluster in fine_volumes_clusters]
+
+        # Retrieve the primal faces centers for each cluster.
+        clusters_primal_face_center_values = [
+            self.finescale_mesh.primal_face_center[faces].flatten() for faces in clusters_faces]
+        clusters_faces_centers = [
+            faces[primal_face_center_values == 1] for primal_face_center_values,
+            faces in zip(clusters_primal_face_center_values, clusters_faces)]
+        clusters_faces_centers_centroids = [self.finescale_mesh.faces.center[primal_faces_centers]
+                                            for primal_faces_centers in clusters_faces_centers]
+
+        # Retrieve the primal volumes centers.
+        clusters_primal_volume_center_values = [
+            self.finescale_mesh.primal_volume_center[vols].flatten() for vols in fine_volumes_clusters]
+        index_of_clusters_volumes_centers = [
+            np.where(primal_volume_center_values == 1)[0][0]
+            for primal_volume_center_values in clusters_primal_volume_center_values]
+        clusters_volumes_centers = [cluster[i]
+                                    for cluster, i in zip(fine_volumes_clusters, index_of_clusters_volumes_centers)]
+        clusters_volumes_centers_centroids = [self.finescale_mesh.volumes.center[primal_center].flatten()
+                                              for primal_center in clusters_volumes_centers]
+
+        # Finally, compute the path between the primal volume center and its faces centers.
+        for cluster, cluster_faces, primal_center, primal_faces_centers in zip(fine_volumes_clusters, clusters_faces,
+                                                                               clusters_volumes_centers_centroids,
+                                                                               clusters_faces_centers_centroids):
+            fine_volumes_in_dual_edge = np.concatenate([self._check_intersections_along_axis(
+                primal_center, primal_face_center, cluster_faces, cluster)
+                for primal_face_center in primal_faces_centers])
+            self.finescale_mesh.dual_mesh_edge[fine_volumes_in_dual_edge] = 1
 
     def _group_fine_volumes_by_bg_value(self):
         all_finescale_volumes = self.finescale_mesh.volumes.all[:]
@@ -147,3 +179,69 @@ class BackgroundGrid(object):
             for bg_value_id_pairs in finescale_volumes_grouped_by_bg_value]
 
         return finescale_clusters
+
+    def _check_intersections_along_axis(self, c1, c2, faces, fine_volumes_cluster) -> np.ndarray:
+        # Check for intersection between the box's axis and the mesh faces.
+        num_faces = len(faces)
+        faces_nodes_handles = self.finescale_mesh.faces.connectivities[faces]
+        num_vertices_of_volume = faces_nodes_handles.shape[1]
+        faces_vertices = self.finescale_mesh.nodes.coords[faces_nodes_handles.flatten()].reshape(
+            (num_faces, num_vertices_of_volume, 3))
+
+        # Plane parameters of each face.
+        R_0 = faces_vertices[:, 0, :]
+        N = np.cross(faces_vertices[:, 1, :] - R_0,
+                     faces_vertices[:, 2, :] - R_0)
+
+        # Compute the parameters of the main axis line.
+        num = np.einsum("ij,ij->i", N, R_0 - c1)
+        denom = N.dot(c2 - c1)
+
+        non_zero_denom = denom[np.abs(denom) > 1e-6]
+        non_zero_num = num[np.abs(denom) > 1e-6]
+        r = non_zero_num / non_zero_denom
+
+        # Check faces intersected by the axis' line.
+        filtered_faces = faces[np.abs(denom) > 1e-6]
+        filtered_faces = filtered_faces[(r >= 0) & (r <= 1)]
+        filtered_nodes = faces_vertices[np.abs(denom) > 1e-6]
+        filtered_nodes = filtered_nodes[(r >= 0) & (r <= 1)]
+
+        r = r[(r >= 0) & (r <= 1)]
+        P = c1 + r[:, np.newaxis]*(c2 - c1)
+
+        # Compute the intersection point between the face plane and the axis
+        # line and check if such point is in the face.
+        angle_sum = np.zeros(filtered_nodes.shape[0])
+        for i in range(num_vertices_of_volume):
+            p0, p1 = filtered_nodes[:, i, :], filtered_nodes[:,
+                                                             (i+1) % num_vertices_of_volume, :]
+            a = p0 - P
+            b = p1 - P
+            norm_prod = np.linalg.norm(a, axis=1)*np.linalg.norm(b, axis=1)
+            # If the point of intersection is too close to a vertex, then
+            # take it as the vertex itself.
+            angle_sum[norm_prod <= 1e-6] = 2*np.pi
+            cos_theta = np.einsum("ij,ij->i", a, b) / norm_prod
+            theta = np.arccos(cos_theta)
+            angle_sum += theta
+
+        # If the sum of the angles around the intersection point is 2*pi, then
+        # the point is inside the polygon.
+        intersected_faces = filtered_faces[np.abs(2*np.pi - angle_sum) < 1e-6]
+
+        try:
+            volumes_sharing_face = self.finescale_mesh.faces.bridge_adjacencies(
+                intersected_faces, "faces", "volumes")
+        except:
+            volumes_sharing_face = np.array([], dtype=int)
+
+        try:
+            volumes_sharing_face_flat = np.concatenate(volumes_sharing_face)
+        except:
+            volumes_sharing_face_flat = volumes_sharing_face[:]
+
+        unique_volumes = np.unique(volumes_sharing_face_flat)
+        unique_volumes_in_cluster = unique_volumes[np.isin(unique_volumes, fine_volumes_cluster)]
+
+        return unique_volumes_in_cluster

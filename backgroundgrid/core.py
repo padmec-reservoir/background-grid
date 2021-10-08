@@ -118,7 +118,9 @@ class BackgroundGrid(object):
 
         for bg_face in all_bg_faces:
             bg_face_center = self.bg_mesh.faces.center[bg_face].flatten()
-            primal_face_center = np.linalg.norm(fine_faces_in_primal_faces_centers - bg_face_center, axis=1).argmin()
+            primal_face_center_index = np.linalg.norm(
+                fine_faces_in_primal_faces_centers - bg_face_center, axis=1).argmin()
+            primal_face_center = fine_faces_in_primal_faces[primal_face_center_index]
             self.finescale_mesh.primal_face_center[primal_face_center] = 1
 
     def compute_dual_mesh_edges(self) -> None:

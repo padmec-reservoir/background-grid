@@ -10,6 +10,7 @@ class BackgroundGrid(object):
     def __init__(self, finescale_mesh_file: str, bg_mesh_file: str) -> None:
         self.finescale_mesh = FineScaleMesh(finescale_mesh_file)
         self.bg_mesh = FineScaleMesh(bg_mesh_file)
+        self.primal_volumes = None
 
         all_fine_vols = self.finescale_mesh.volumes.all[:]
         all_fine_faces = self.finescale_mesh.faces.all[:]
@@ -64,6 +65,8 @@ class BackgroundGrid(object):
                                            for neighbors in singletons_neighbors]
             self.finescale_mesh.bg_volume[singletons] = new_bg_values_of_singletons
 
+        self.primal_volumes = self._group_fine_volumes_by_bg_value()
+
     def get_disconnected_clusters(self) -> list:
         finescale_clusters = self._group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
@@ -92,12 +95,11 @@ class BackgroundGrid(object):
         return finescale_non_connected_clusters_components_flat
 
     def set_primal_coarse_faces(self):
-        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
         clusters_fine_faces = [
             self.finescale_mesh.volumes.adjacencies[cluster]
-            for cluster in fine_volumes_clusters]
+            for cluster in self.primal_volumes]
 
-        for cluster, cluster_faces in zip(fine_volumes_clusters, clusters_fine_faces):
+        for cluster, cluster_faces in zip(self.primal_volumes, clusters_fine_faces):
             cluster_faces_flat = np.unique(np.concatenate(cluster_faces))
 
             # Find the fine volumes sharing the faces inside the cluster.
@@ -121,10 +123,8 @@ class BackgroundGrid(object):
             self.finescale_mesh.primal_face[primal_internal_faces] = 1
 
     def compute_primal_centers(self) -> None:
-        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
-
         # Compute primal volume centers.
-        for cluster in fine_volumes_clusters:
+        for cluster in self.primal_volumes:
             bg_vol_id = int(self.finescale_mesh.bg_volume[cluster[0]][0, 0])
             bg_vol_center = self.bg_mesh.volumes.center[bg_vol_id][0]
             fine_volumes_centers_in_bg_vol = self.finescale_mesh.volumes.center[cluster]
@@ -148,9 +148,8 @@ class BackgroundGrid(object):
 
     def compute_dual_mesh_edges(self) -> None:
         # First, retrieve the primal volumes clusters and its faces.
-        fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
         clusters_faces = [np.unique(self.finescale_mesh.volumes.adjacencies[cluster].flatten())
-                          for cluster in fine_volumes_clusters]
+                          for cluster in self.primal_volumes]
 
         # Retrieve the primal faces centers for each cluster.
         clusters_primal_face_center_values = [
@@ -163,17 +162,17 @@ class BackgroundGrid(object):
 
         # Retrieve the primal volumes centers.
         clusters_primal_volume_center_values = [
-            self.finescale_mesh.primal_volume_center[vols].flatten() for vols in fine_volumes_clusters]
+            self.finescale_mesh.primal_volume_center[vols].flatten() for vols in self.primal_volumes]
         index_of_clusters_volumes_centers = [
             np.where(primal_volume_center_values == 1)[0][0]
             for primal_volume_center_values in clusters_primal_volume_center_values]
         clusters_volumes_centers = [cluster[i]
-                                    for cluster, i in zip(fine_volumes_clusters, index_of_clusters_volumes_centers)]
+                                    for cluster, i in zip(self.primal_volumes, index_of_clusters_volumes_centers)]
         clusters_volumes_centers_centroids = [self.finescale_mesh.volumes.center[primal_center].flatten()
                                               for primal_center in clusters_volumes_centers]
 
         # Finally, compute the path between the primal volume center and its faces centers.
-        for cluster, cluster_faces, primal_center, primal_faces_centers in zip(fine_volumes_clusters, clusters_faces,
+        for cluster, cluster_faces, primal_center, primal_faces_centers in zip(self.primal_volumes, clusters_faces,
                                                                                clusters_volumes_centers_centroids,
                                                                                clusters_faces_centers_centroids):
             fine_volumes_in_dual_edge = np.concatenate([self._check_intersections_along_axis(

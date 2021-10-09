@@ -37,7 +37,7 @@ class BackgroundGrid(object):
             self.finescale_mesh.bg_volume[centroids_in_bg_volume] = int(bg_id)
 
     def fix_primal_volume_assignment(self) -> None:
-        disconnected_clusters = self.get_disconnected_clusters()
+        disconnected_clusters = self._get_disconnected_clusters()
 
         while len(disconnected_clusters) > 0:
             disconnected_volumes = list(itertools.chain.from_iterable(disconnected_clusters))
@@ -54,7 +54,7 @@ class BackgroundGrid(object):
                 else:
                     disconnected_volumes.append(vol)
 
-            disconnected_clusters = self.get_disconnected_clusters()
+            disconnected_clusters = self._get_disconnected_clusters()
 
         all_clusters = self._group_fine_volumes_by_bg_value()
         singletons = [cluster[0] for cluster in all_clusters if len(cluster) == 1]
@@ -67,7 +67,7 @@ class BackgroundGrid(object):
 
         self.primal_volumes = self._group_fine_volumes_by_bg_value()
 
-    def get_disconnected_clusters(self) -> list:
+    def _get_disconnected_clusters(self) -> list:
         finescale_clusters = self._group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
 

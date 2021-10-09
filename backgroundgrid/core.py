@@ -12,7 +12,12 @@ class BackgroundGrid(object):
         self.bg_mesh = FineScaleMesh(bg_mesh_file)
 
         all_fine_vols = self.finescale_mesh.volumes.all[:]
-        self.all_fine_volumes_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(all_fine_vols, 2, 3)
+        all_fine_faces = self.finescale_mesh.faces.all[:]
+        self.all_fine_volumes_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(
+            all_fine_vols, 2, 3)
+        self.all_fine_volumes_sharing_face = self.finescale_mesh.faces.bridge_adjacencies(
+            all_fine_faces, 2, 3)
+        self.all_fine_volumes_adjacencies = self.finescale_mesh.volumes.adjacencies[:]
 
     def run(self) -> None:
         pass
@@ -88,16 +93,32 @@ class BackgroundGrid(object):
 
     def set_primal_coarse_faces(self):
         fine_volumes_clusters = self._group_fine_volumes_by_bg_value()
-        clusters_fine_faces = [self.finescale_mesh.volumes.adjacencies[cluster]
-                               for cluster in fine_volumes_clusters]
+        clusters_fine_faces = [
+            self.finescale_mesh.volumes.adjacencies[cluster]
+            for cluster in fine_volumes_clusters]
 
         for cluster, cluster_faces in zip(fine_volumes_clusters, clusters_fine_faces):
             cluster_faces_flat = np.unique(np.concatenate(cluster_faces))
-            adjacent_volumes = self.finescale_mesh.faces.bridge_adjacencies(cluster_faces_flat, 2, 3)
-            primal_faces_mask = [(len(vols) == 1) | np.any(~np.isin(vols, cluster))
-                                 for vols in adjacent_volumes]
-            primal_faces = cluster_faces_flat[primal_faces_mask]
-            self.finescale_mesh.primal_face[primal_faces] = 1
+
+            # Find the fine volumes sharing the faces inside the cluster.
+            adjacent_volumes = self.all_fine_volumes_sharing_face[cluster_faces_flat]
+
+            # Find the fine faces at the boundary of the global domain. Those are by definition
+            # primal faces.
+            num_of_adjacent_volumes_per_face = np.vectorize(len)(adjacent_volumes)
+            global_boundary_fine_faces = cluster_faces_flat[num_of_adjacent_volumes_per_face == 1]
+
+            # Now, find which fine faces are on the boundary of the primal volume, i.e., the faces that
+            # are shared with a fine volume outside the current primal volume.
+            internal_fine_faces = cluster_faces_flat[num_of_adjacent_volumes_per_face == 2]
+            internal_fine_faces_adjacent_volumes = np.vstack(adjacent_volumes[num_of_adjacent_volumes_per_face == 2])
+            primal_internal_faces_mask = np.any(
+                ~np.isin(internal_fine_faces_adjacent_volumes, cluster, assume_unique=True), axis=1)
+            primal_internal_faces = internal_fine_faces[primal_internal_faces_mask]
+
+            # Finally, set the primal faces.
+            self.finescale_mesh.primal_face[global_boundary_fine_faces] = 1
+            self.finescale_mesh.primal_face[primal_internal_faces] = 1
 
     def compute_primal_centers(self) -> None:
         fine_volumes_clusters = self._group_fine_volumes_by_bg_value()

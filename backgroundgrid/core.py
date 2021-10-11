@@ -67,33 +67,6 @@ class BackgroundGrid(object):
 
         self.primal_volumes = self._group_fine_volumes_by_bg_value()
 
-    def _get_disconnected_clusters(self) -> list:
-        finescale_clusters = self._group_fine_volumes_by_bg_value()
-        finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
-
-        for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
-            G.add_nodes_from(cluster)
-            face_neighbors = self.all_fine_volumes_neighbors[cluster]
-            all_face_connections = [[(neighbor, vol) for neighbor in neighbors if neighbor in cluster]
-                                    for vol, neighbors in zip(cluster, face_neighbors)]
-            G.add_edges_from(itertools.chain.from_iterable(all_face_connections))
-
-        finescale_non_connected_clusters_components = [
-            list(nx.connected_components(G)) for G in finescale_clusters_graphs
-            if nx.number_connected_components(G) > 1]
-        finescale_non_connected_clusters_components_sizes = [
-            [len(cluster) for cluster in clusters]
-            for clusters in finescale_non_connected_clusters_components]
-        indices_of_large_clusters = [list_argmax(sizes) for sizes in finescale_non_connected_clusters_components_sizes]
-
-        for cluster, i in zip(finescale_non_connected_clusters_components, indices_of_large_clusters):
-            del cluster[i]
-
-        finescale_non_connected_clusters_components_flat = list(
-            itertools.chain.from_iterable(finescale_non_connected_clusters_components))
-
-        return finescale_non_connected_clusters_components_flat
-
     def set_primal_coarse_faces(self):
         clusters_fine_faces = [
             self.finescale_mesh.volumes.adjacencies[cluster]
@@ -179,6 +152,33 @@ class BackgroundGrid(object):
                 primal_center, primal_face_center, cluster_faces, cluster)
                 for primal_face_center in primal_faces_centers])
             self.finescale_mesh.dual_mesh_edge[fine_volumes_in_dual_edge] = 1
+
+    def _get_disconnected_clusters(self) -> list:
+        finescale_clusters = self._group_fine_volumes_by_bg_value()
+        finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]
+
+        for cluster, G in zip(finescale_clusters, finescale_clusters_graphs):
+            G.add_nodes_from(cluster)
+            face_neighbors = self.all_fine_volumes_neighbors[cluster]
+            all_face_connections = [[(neighbor, vol) for neighbor in neighbors if neighbor in cluster]
+                                    for vol, neighbors in zip(cluster, face_neighbors)]
+            G.add_edges_from(itertools.chain.from_iterable(all_face_connections))
+
+        finescale_non_connected_clusters_components = [
+            list(nx.connected_components(G)) for G in finescale_clusters_graphs
+            if nx.number_connected_components(G) > 1]
+        finescale_non_connected_clusters_components_sizes = [
+            [len(cluster) for cluster in clusters]
+            for clusters in finescale_non_connected_clusters_components]
+        indices_of_large_clusters = [list_argmax(sizes) for sizes in finescale_non_connected_clusters_components_sizes]
+
+        for cluster, i in zip(finescale_non_connected_clusters_components, indices_of_large_clusters):
+            del cluster[i]
+
+        finescale_non_connected_clusters_components_flat = list(
+            itertools.chain.from_iterable(finescale_non_connected_clusters_components))
+
+        return finescale_non_connected_clusters_components_flat
 
     def _group_fine_volumes_by_bg_value(self):
         all_finescale_volumes = self.finescale_mesh.volumes.all[:]

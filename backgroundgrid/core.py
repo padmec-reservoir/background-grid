@@ -296,9 +296,9 @@ class BackgroundGrid(object):
         # Check for intersection between the box's axis and the mesh faces.
         num_faces = len(faces)
         faces_nodes_handles = self.finescale_mesh.faces.connectivities[faces]
-        num_vertices_of_volume = faces_nodes_handles.shape[1]
+        num_vertices_in_face = faces_nodes_handles.shape[1]
         faces_vertices = self.finescale_mesh.nodes.coords[faces_nodes_handles.flatten()].reshape(
-            (num_faces, num_vertices_of_volume, 3))
+            (num_faces, num_vertices_in_face, 3))
 
         # Plane parameters of each face.
         R_0 = faces_vertices[:, 0, :]
@@ -325,9 +325,9 @@ class BackgroundGrid(object):
         # Compute the intersection point between the face plane and the axis
         # line and check if such point is in the face.
         angle_sum = np.zeros(filtered_nodes.shape[0])
-        for i in range(num_vertices_of_volume):
+        for i in range(num_vertices_in_face):
             p0, p1 = filtered_nodes[:, i, :], filtered_nodes[:,
-                                                             (i+1) % num_vertices_of_volume, :]
+                                                             (i+1) % num_vertices_in_face, :]
             a = p0 - P
             b = p1 - P
             norm_prod = np.linalg.norm(a, axis=1)*np.linalg.norm(b, axis=1)

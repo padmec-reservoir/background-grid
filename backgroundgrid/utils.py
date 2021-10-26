@@ -28,3 +28,7 @@ def find_aabb_of_volumes(volumes: np.ndarray) -> np.ndarray:
 
 def list_argmax(l: list) -> int:
     return max(zip(l, range(len(l))))[1]
+
+
+def remove_tuples_duplicate(tuples: list) -> list:
+    return list({*map(tuple, map(sorted, tuples))})

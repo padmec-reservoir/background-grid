@@ -208,24 +208,23 @@ class BackgroundGrid(object):
             dist_vectors = fine_vols_connectivities_coords - coarse_center
             P = dist_vectors.dot(N[coarse_vol].T)
             plane_intersection_matrix = np.abs(np.sign(P).sum(axis=1)) < Nv_fine
-            fine_vols_intersected_by_any_plane = fine_vols_in_coarse_vol[plane_intersection_matrix.any(axis=1)]
-
-            intersected_centroids = self.finescale_mesh.volumes.center[fine_vols_intersected_by_any_plane]
-            unit_N = N[coarse_vol] / np.linalg.norm(N[coarse_vol], axis=1)[:, np.newaxis]
-            D = intersected_centroids - coarse_center
-            proj_centroids_per_normal = np.array(
-                [intersected_centroids - np.dot(D, n)[:, np.newaxis] * n
-                 for n in unit_N])
 
             # Check which projections are inside a dual face.
             for i in range(num_of_coarse_faces_pairs):
+                fine_vols_intersected_by_face_plane = fine_vols_in_coarse_vol[plane_intersection_matrix[:, i]]
+
+                intersected_centroids = self.finescale_mesh.volumes.center[fine_vols_intersected_by_face_plane]
+                n = N[coarse_vol, i] / np.linalg.norm(N[coarse_vol, i])
+                D = intersected_centroids - coarse_center
+                proj_centroids = intersected_centroids - np.dot(D, n)[:, np.newaxis] * n
+
                 # Computing the vectors defining the inside region of the dual face.
                 p0, p1, p2 = coarse_center[:], C0[coarse_vol, i], C1[coarse_vol, i]
                 A = p1 - p0
                 B = p2 - p0
 
                 # Find the orientation of the projections regarding A and B.
-                V = proj_centroids_per_normal[i] - p0
+                V = proj_centroids - p0
 
                 AxB = N[coarse_vol, i]
                 VxA = np.cross(V, A)
@@ -235,7 +234,7 @@ class BackgroundGrid(object):
                 VxB_dot_VxA = np.einsum("ij,ij->i", VxB, VxA)
 
                 # Check if the orthogonal vectors have opposing senses.
-                dual_face_vols = fine_vols_intersected_by_any_plane[(AxB_dot_AxV >= 0) & (VxB_dot_VxA <= 0)]
+                dual_face_vols = fine_vols_intersected_by_face_plane[(AxB_dot_AxV >= 0) & (VxB_dot_VxA <= 0)]
 
                 self.finescale_mesh.dual_mesh_face[dual_face_vols] = 1
 

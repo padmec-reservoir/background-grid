@@ -180,16 +180,6 @@ class BackgroundGrid(object):
         coarse_faces_centers_pairs = self.bg_mesh.faces.center[faces_centers_pairs_per_volume.flatten()].reshape(
             (num_of_coarse_vols, num_of_coarse_faces_pairs, 2, 3))
 
-        # Find the edges shared by each face pair.
-        num_of_coarse_face_edges = self.bg_mesh.faces.adjacencies[0].shape[0]
-        coarse_faces_pairs_edges = self.bg_mesh.faces.adjacencies[faces_centers_pairs_per_volume.flatten()].reshape(
-            (num_of_coarse_vols, num_of_coarse_faces_pairs, num_of_coarse_face_edges * 2))
-        E = np.sort(coarse_faces_pairs_edges, axis=2)
-        shared_edges = E[:, :, :-1][E[:, :, 1:] == E[:, :, :-1]]
-        shared_edges_endpoints = self.bg_mesh.edges.connectivities[shared_edges]
-        shared_edges_endpoints_coords = self.bg_mesh.nodes.coords[shared_edges_endpoints.flatten()].reshape(
-            (num_of_coarse_vols, num_of_coarse_faces_pairs, 2, 3))
-
         # Computing the plane parameters for each dual face.
         C0 = coarse_faces_centers_pairs[:, :, 0, :]
         C1 = coarse_faces_centers_pairs[:, :, 1, :]

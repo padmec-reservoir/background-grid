@@ -2,8 +2,9 @@ import numpy as np
 import networkx as nx
 import itertools
 from scipy.spatial import Delaunay
+from scipy.special import comb
 from preprocessor.meshHandle.finescaleMesh import FineScaleMesh
-from .utils import list_argmax
+from .utils import list_argmax, remove_tuples_duplicate
 
 
 class BackgroundGrid(object):
@@ -152,6 +153,101 @@ class BackgroundGrid(object):
                 primal_center, primal_face_center, cluster_faces, cluster)
                 for primal_face_center in primal_faces_centers])
             self.finescale_mesh.dual_mesh_edge[fine_volumes_in_dual_edge] = 1
+
+    def set_dual_mesh_faces(self) -> None:
+        coarse_volumes = self.bg_mesh.volumes.all[:]
+        coarse_faces = self.bg_mesh.faces.all[:]
+
+        coarse_volumes_adjacencies = self.bg_mesh.volumes.adjacencies[:]
+        coarse_faces_neighbors = self.bg_mesh.faces.bridge_adjacencies(coarse_faces, 1, 2)
+
+        num_of_coarse_vols = coarse_volumes.shape[0]
+        num_faces_of_coarse_vol = coarse_volumes_adjacencies.shape[1]
+        num_of_coarse_faces_pairs = int(comb(num_faces_of_coarse_vol, 2))
+        faces_centers_pairs_per_volume = np.empty((num_of_coarse_vols, num_of_coarse_faces_pairs, 2), dtype=int)
+
+        for coarse_vol_adjacencies, coarse_vol in zip(coarse_volumes_adjacencies, coarse_volumes):
+            adjacencies_neighbors = coarse_faces_neighbors[coarse_vol_adjacencies]
+            neighbors_in_coarse_vol = [
+                neigh[np.isin(neigh, coarse_vol_adjacencies, assume_unique=True)] for neigh in adjacencies_neighbors]
+            faces_pairs = [list(itertools.zip_longest([f], neigh, fillvalue=f))
+                           for f, neigh in zip(coarse_vol_adjacencies, neighbors_in_coarse_vol)]
+            faces_pairs_flat = list(itertools.chain.from_iterable(faces_pairs))
+            faces_pairs_flat_unique = remove_tuples_duplicate(faces_pairs_flat)
+            faces_centers_pairs_per_volume[coarse_vol, :, :] = np.array(faces_pairs_flat_unique)
+
+        coarse_centers = self.bg_mesh.volumes.center[:]
+        coarse_faces_centers_pairs = self.bg_mesh.faces.center[faces_centers_pairs_per_volume.flatten()].reshape(
+            (num_of_coarse_vols, num_of_coarse_faces_pairs, 2, 3))
+
+        # Find the edges shared by each face pair.
+        num_of_coarse_face_edges = self.bg_mesh.faces.adjacencies[0].shape[0]
+        coarse_faces_pairs_edges = self.bg_mesh.faces.adjacencies[faces_centers_pairs_per_volume.flatten()].reshape(
+            (num_of_coarse_vols, num_of_coarse_faces_pairs, num_of_coarse_face_edges * 2))
+        E = np.sort(coarse_faces_pairs_edges, axis=2)
+        shared_edges = E[:, :, :-1][E[:, :, 1:] == E[:, :, :-1]]
+        shared_edges_endpoints = self.bg_mesh.edges.connectivities[shared_edges]
+        shared_edges_endpoints_coords = self.bg_mesh.nodes.coords[shared_edges_endpoints.flatten()].reshape(
+            (num_of_coarse_vols, num_of_coarse_faces_pairs, 2, 3))
+
+        # Computing the plane parameters for each dual face.
+        C0 = coarse_faces_centers_pairs[:, :, 0, :]
+        C1 = coarse_faces_centers_pairs[:, :, 1, :]
+
+        # Array of normal vectors of each dual face plane.
+        N = np.cross(C0 - coarse_centers[:, np.newaxis], C1 - coarse_centers[:, np.newaxis])
+
+        # For each primal volume, find which fine volumes in the primal volume
+        # are intersected by a dual face plane.
+        fine_vols_bg_value = self.finescale_mesh.bg_volume[:].flatten()
+
+        # Number of vertices in a fine volume.
+        Nv_fine = self.finescale_mesh.volumes.connectivities[0].shape[0]
+
+        for coarse_vol in coarse_volumes:
+            fine_vols_in_coarse_vol = self.finescale_mesh.volumes.all[fine_vols_bg_value == coarse_vol]
+            N_fine_vols = fine_vols_in_coarse_vol.shape[0]
+
+            fine_vols_connectivities = self.finescale_mesh.volumes.connectivities[fine_vols_in_coarse_vol].flatten()
+            fine_vols_connectivities_coords = self.finescale_mesh.nodes.coords[fine_vols_connectivities].reshape(
+                (N_fine_vols, Nv_fine, 3))
+
+            # For each fine volume, check whether it has vertices on opposing
+            # sides of the dual faces planes.
+            coarse_center = coarse_centers[coarse_vol]
+            dist_vectors = fine_vols_connectivities_coords - coarse_center
+            P = dist_vectors.dot(N[coarse_vol].T)
+            plane_intersection_matrix = np.abs(np.sign(P).sum(axis=1)) < Nv_fine
+            fine_vols_intersected_by_any_plane = fine_vols_in_coarse_vol[plane_intersection_matrix.any(axis=1)]
+
+            intersected_centroids = self.finescale_mesh.volumes.center[fine_vols_intersected_by_any_plane]
+            unit_N = N[coarse_vol] / np.linalg.norm(N[coarse_vol], axis=1)[:, np.newaxis]
+            D = intersected_centroids - coarse_center
+            proj_centroids_per_normal = np.array(
+                [intersected_centroids - np.dot(D, n)[:, np.newaxis] * n
+                 for n in unit_N])
+
+            # Check which projections are inside a dual face.
+            for i in range(num_of_coarse_faces_pairs):
+                # Computing the vectors defining the inside region of the dual face.
+                p0, p1, p2 = coarse_center[:], C0[coarse_vol, i], C1[coarse_vol, i]
+                A = p1 - p0
+                B = p2 - p0
+
+                # Find the orientation of the projections regarding A and B.
+                V = proj_centroids_per_normal[i] - p0
+
+                AxB = N[coarse_vol, i]
+                VxA = np.cross(V, A)
+                VxB = np.cross(V, B)
+
+                AxB_dot_AxV = np.dot(AxB, -VxA.T)
+                VxB_dot_VxA = np.einsum("ij,ij->i", VxB, VxA)
+
+                # Check if the orthogonal vectors have opposing senses.
+                dual_face_vols = fine_vols_intersected_by_any_plane[(AxB_dot_AxV >= 0) & (VxB_dot_VxA <= 0)]
+
+                self.finescale_mesh.dual_mesh_face[dual_face_vols] = 1
 
     def _get_disconnected_clusters(self) -> list:
         finescale_clusters = self._group_fine_volumes_by_bg_value()

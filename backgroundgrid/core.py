@@ -25,11 +25,12 @@ class BackgroundGrid(object):
         pass
 
     def assign_finescale_volumes_to_bg_volumes(self) -> None:
+        num_of_nodes_of_volume = self.bg_mesh.volumes.connectivities[0].shape[0]
         finescale_volumes_centroids = self.finescale_mesh.volumes.center[:]
         bg_volumes_ids = self.bg_mesh.volumes.all[:]
         bg_volumes_connectivities = self.bg_mesh.volumes.connectivities[:]
         bg_volumes_vertices = self.bg_mesh.nodes.coords[bg_volumes_connectivities.flatten()].reshape(
-            (bg_volumes_connectivities.shape[0], 4, 3))
+            (bg_volumes_connectivities.shape[0], num_of_nodes_of_volume, 3))
         bg_volumes_hulls = [Delaunay(vertices) for vertices in bg_volumes_vertices]
         centroids_in_bg_volumes_check = [hull.find_simplex(
             finescale_volumes_centroids) >= 0 for hull in bg_volumes_hulls]
@@ -163,7 +164,7 @@ class BackgroundGrid(object):
 
         num_of_coarse_vols = coarse_volumes.shape[0]
         num_faces_of_coarse_vol = coarse_volumes_adjacencies.shape[1]
-        num_of_coarse_faces_pairs = int(comb(num_faces_of_coarse_vol, 2))
+        num_of_coarse_faces_pairs = num_faces_of_coarse_vol * 2
         faces_centers_pairs_per_volume = np.empty((num_of_coarse_vols, num_of_coarse_faces_pairs, 2), dtype=int)
 
         for coarse_vol_adjacencies, coarse_vol in zip(coarse_volumes_adjacencies, coarse_volumes):

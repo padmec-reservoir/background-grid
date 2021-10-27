@@ -68,3 +68,10 @@ dual_mesh_face:
   data type: int
   sparse: True
   level: 0
+
+support_region:
+  type: volumes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0

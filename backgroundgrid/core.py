@@ -239,6 +239,102 @@ class BackgroundGrid(object):
 
                 self.finescale_mesh.dual_mesh_face[dual_face_vols] = 1
 
+    def set_support_region(self) -> None:
+        # Find the neighbors for each interface.
+        all_coarse_vols = self.bg_mesh.volumes.all[:]
+        coarse_vols_node_neighbors = self.bg_mesh.volumes.bridge_adjacencies(all_coarse_vols, 0, 3)
+        coarse_vols_edge_neighbors = self.bg_mesh.volumes.bridge_adjacencies(all_coarse_vols, 1, 3)
+        coarse_vols_face_neighbors = self.bg_mesh.volumes.bridge_adjacencies(all_coarse_vols, 2, 3)
+
+        # Find the pairs of face neighbors in each coarse volume node
+        # neighborhood.
+        coarse_vols_pairs_by_region = [
+            remove_tuples_duplicate(
+                itertools.chain.from_iterable(
+                    [itertools.zip_longest(
+                        [neigh],
+                        np.intersect1d(
+                            coarse_vols_face_neighbors[neigh],
+                            neighbors, assume_unique=True),
+                        fillvalue=neigh) for neigh in neighbors]))
+            for neighbors in coarse_vols_node_neighbors]
+
+        # Get the primal coarse centers by primal volume.
+        all_fine_vols_bg_values = self.finescale_mesh.bg_volume[:].flatten()
+        all_primal_vol_values = self.finescale_mesh.bg_volume[:].flatten()
+        all_primal_vol_centers_values = self.finescale_mesh.primal_volume_center[:].flatten()
+        primal_vol_centers = np.where(all_primal_vol_centers_values == 1)[0]
+        primal_vol_centers_bg_values = all_primal_vol_values[primal_vol_centers]
+
+        M = np.vstack([primal_vol_centers_bg_values, primal_vol_centers]).T
+        primal_vol_centers_ord = M[M[:, 0].argsort()][:, 1]
+
+        for coarse_vol in all_coarse_vols:
+            # Separate the neighbors by interface.
+            face_neighbors = coarse_vols_face_neighbors[coarse_vol]
+            edge_neighbors = coarse_vols_edge_neighbors[coarse_vol]
+            node_neighbors = coarse_vols_node_neighbors[coarse_vol]
+
+            # Compute the interfaces shared with each neighbor.
+            coarse_vol_faces = self.bg_mesh.volumes.adjacencies[coarse_vol]
+            face_neighbors_faces = np.unique(self.bg_mesh.volumes.adjacencies[face_neighbors].flatten())
+            shared_faces = coarse_vol_faces[np.isin(coarse_vol_faces, face_neighbors_faces, assume_unique=True)]
+
+            coarse_vol_edges = self.bg_mesh.volumes.bridge_adjacencies(coarse_vol, 1, 1)
+            edge_neighbors_edges = np.unique(
+                self.bg_mesh.volumes.bridge_adjacencies(edge_neighbors, 1, 1).flatten())
+            shared_edges = coarse_vol_edges[np.isin(coarse_vol_edges, edge_neighbors_edges, assume_unique=True)]
+
+            coarse_vol_nodes = self.bg_mesh.volumes.connectivities[coarse_vol]
+            node_neighbors_nodes = np.unique(self.bg_mesh.volumes.connectivities[node_neighbors].flatten())
+            shared_nodes = coarse_vol_nodes[np.isin(coarse_vol_nodes, node_neighbors_nodes, assume_unique=True)]
+
+            # Find the center of each interface.
+            shared_faces_centers = self.bg_mesh.faces.center[shared_faces]
+            shared_edges_centers = self.bg_mesh.edges.center[shared_edges]
+            shared_nodes_centers = self.bg_mesh.nodes.coords[shared_nodes]
+
+            # Find the center of the faces shared between the node neighbors.
+            num_neighbors_pairs = len(coarse_vols_pairs_by_region[coarse_vol])
+            neighbors_pairs = np.array(coarse_vols_pairs_by_region[coarse_vol]).flatten()
+            neighbors_pairs_faces = self.bg_mesh.volumes.adjacencies[neighbors_pairs].reshape(
+                (num_neighbors_pairs, 2, -1))
+            neighbors_pairs_shared_faces = [np.intersect1d(f1, f2, assume_unique=True)[
+                0] for f1, f2 in neighbors_pairs_faces]
+            neighbors_pairs_shared_faces_centers = self.bg_mesh.faces.center[neighbors_pairs_shared_faces]
+
+            # Find the centers of all coarse volumes in the support region.
+            coarse_vol_center = self.bg_mesh.volumes.center[coarse_vol].flatten()
+            vols_centers = self.bg_mesh.volumes.center[node_neighbors]
+
+            # Build a Delaunay triangulation with all the previous points.
+            all_points = np.vstack([shared_faces_centers, shared_edges_centers, shared_nodes_centers,
+                                   neighbors_pairs_shared_faces_centers, coarse_vol_center, vols_centers])
+            triangulation = Delaunay(all_points)
+
+            # Find which simplices contain a coarse cell center and remove it.
+            neighbors_primal_centers = primal_vol_centers_ord[node_neighbors]
+
+            # Check which fine volumes are inside the triangulation.
+            fine_vols_in_coarse_vol = self.finescale_mesh.volumes.all[all_fine_vols_bg_values == coarse_vol]
+            fine_vols_in_neighbors = self.finescale_mesh.volumes.all[np.isin(
+                all_fine_vols_bg_values, node_neighbors)]
+            fine_vols_in_neighbors_centers = self.finescale_mesh.volumes.center[fine_vols_in_neighbors]
+
+            fine_vols_in_support_region = fine_vols_in_neighbors[triangulation.find_simplex(
+                fine_vols_in_neighbors_centers) >= 0]
+            fine_vols_in_support_region = np.concatenate((fine_vols_in_coarse_vol, fine_vols_in_support_region))
+
+            # Add the volumes outside the current support region that share a face with
+            # at least two volumes in the support region.
+            vols_sharing_face = np.concatenate(self.all_fine_volumes_neighbors[fine_vols_in_support_region])
+            vols_sharing_face_filt = vols_sharing_face[~np.isin(vols_sharing_face, fine_vols_in_support_region)]
+            uniq_vols_sharing_face_filt, count = np.unique(vols_sharing_face_filt, return_counts=True)
+            new_vols_in_support_region = uniq_vols_sharing_face_filt[count > 1]
+
+            fine_vols_in_support_region = np.concatenate((fine_vols_in_support_region, new_vols_in_support_region))
+            self.finescale_mesh.support_region[fine_vols_in_support_region] = 1
+
     def _get_disconnected_clusters(self) -> list:
         finescale_clusters = self._group_fine_volumes_by_bg_value()
         finescale_clusters_graphs = [nx.Graph() for _ in range(len(finescale_clusters))]

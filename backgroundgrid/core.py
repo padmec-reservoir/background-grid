@@ -13,6 +13,8 @@ class BackgroundGrid(object):
         self.bg_mesh = FineScaleMesh(bg_mesh_file)
         self.primal_volumes = None
 
+        self.finescale_mesh.primal_face_center[:] = -1
+
         all_fine_vols = self.finescale_mesh.volumes.all[:]
         all_fine_faces = self.finescale_mesh.faces.all[:]
         self.all_fine_volumes_neighbors = self.finescale_mesh.volumes.bridge_adjacencies(
@@ -21,6 +23,8 @@ class BackgroundGrid(object):
             all_fine_faces, 2, 3)
         self.all_fine_volumes_adjacencies = self.finescale_mesh.volumes.adjacencies[:]
 
+        self.fine_vols_by_dual_face = {}
+        self.fine_vols_by_dual_edge = {}
     def run(self) -> None:
         pass
 
@@ -119,7 +123,7 @@ class BackgroundGrid(object):
             primal_face_center_index = np.linalg.norm(
                 fine_faces_in_primal_faces_centers - bg_face_center, axis=1).argmin()
             primal_face_center = fine_faces_in_primal_faces[primal_face_center_index]
-            self.finescale_mesh.primal_face_center[primal_face_center] = 1
+            self.finescale_mesh.primal_face_center[primal_face_center] = int(bg_face)
 
     def compute_dual_mesh_edges(self) -> None:
         # First, retrieve the primal volumes clusters and its faces.
@@ -130,7 +134,7 @@ class BackgroundGrid(object):
         clusters_primal_face_center_values = [
             self.finescale_mesh.primal_face_center[faces].flatten() for faces in clusters_faces]
         clusters_faces_centers = [
-            faces[primal_face_center_values == 1] for primal_face_center_values,
+            faces[primal_face_center_values >= 0] for primal_face_center_values,
             faces in zip(clusters_primal_face_center_values, clusters_faces)]
         clusters_faces_centers_centroids = [self.finescale_mesh.faces.center[primal_faces_centers]
                                             for primal_faces_centers in clusters_faces_centers]
@@ -147,13 +151,22 @@ class BackgroundGrid(object):
                                               for primal_center in clusters_volumes_centers]
 
         # Finally, compute the path between the primal volume center and its faces centers.
-        for cluster, cluster_faces, primal_center, primal_faces_centers in zip(self.primal_volumes, clusters_faces,
-                                                                               clusters_volumes_centers_centroids,
-                                                                               clusters_faces_centers_centroids):
-            fine_volumes_in_dual_edge = np.concatenate([self._check_intersections_along_axis(
+        for cluster, cluster_faces, primal_center, primal_center_id, \
+            primal_faces_centers, primal_faces_centers_ids in zip(self.primal_volumes,
+                                                                  clusters_faces, clusters_volumes_centers_centroids,
+                                                                  clusters_volumes_centers, clusters_faces_centers_centroids,
+                                                                  clusters_faces_centers):
+            fine_volumes_in_dual_edges = [self._check_intersections_along_axis(
                 primal_center, primal_face_center, cluster_faces, cluster)
-                for primal_face_center in primal_faces_centers])
-            self.finescale_mesh.dual_mesh_edge[fine_volumes_in_dual_edge] = 1
+                for primal_face_center in primal_faces_centers]
+            all_fine_vols_in_dual_edges = np.concatenate(fine_volumes_in_dual_edges)
+            self.finescale_mesh.dual_mesh_edge[all_fine_vols_in_dual_edges] = 1
+
+            bg_vol = int(self.finescale_mesh.bg_volume[primal_center_id][0])
+            primal_faces_centers_bg_face_value = self.finescale_mesh.primal_face_center[
+                primal_faces_centers_ids].flatten()
+            self.fine_vols_by_dual_edge.update(
+                {(bg_vol, f): vols for f, vols in zip(primal_faces_centers_bg_face_value, fine_volumes_in_dual_edges)})
 
     def set_dual_mesh_faces(self) -> None:
         coarse_volumes = self.bg_mesh.volumes.all[:]
@@ -194,7 +207,6 @@ class BackgroundGrid(object):
 
         # Number of vertices in a fine volume.
         Nv_fine = self.finescale_mesh.volumes.connectivities[0].shape[0]
-
         for coarse_vol in coarse_volumes:
             fine_vols_in_coarse_vol = self.finescale_mesh.volumes.all[fine_vols_bg_value == coarse_vol]
             N_fine_vols = fine_vols_in_coarse_vol.shape[0]
@@ -236,8 +248,14 @@ class BackgroundGrid(object):
 
                 # Check if the orthogonal vectors have opposing senses.
                 dual_face_vols = fine_vols_intersected_by_face_plane[(AxB_dot_AxV >= 0) & (VxB_dot_VxA <= 0)]
+                dual_face_vols_filt = dual_face_vols[self.finescale_mesh.dual_mesh_edge[dual_face_vols].flatten() != 1]
 
-                self.finescale_mesh.dual_mesh_face[dual_face_vols] = 1
+                self.finescale_mesh.dual_mesh_face[dual_face_vols_filt] = 1
+
+                # Set an entry in the dual faces mapping.
+                f1, f2 = faces_centers_pairs_per_volume[coarse_vol, i]
+                key = ((coarse_vol, f1), (coarse_vol, f2)) if f1 < f2 else ((coarse_vol, f2), (coarse_vol, f1))
+                self.fine_vols_by_dual_face[key] = dual_face_vols_filt
 
     def set_support_region(self) -> None:
         # Find the neighbors for each interface.

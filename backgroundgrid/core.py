@@ -7,7 +7,7 @@ from preprocessor.meshHandle.finescaleMesh import FineScaleMesh
 from .utils import list_argmax, remove_tuples_duplicate
 
 
-class BackgroundGrid(object):
+class MultiscaleCoarseMeshGenerator(object):
     def __init__(self, finescale_mesh_file: str, bg_mesh_file: str) -> None:
         self.finescale_mesh = FineScaleMesh(finescale_mesh_file)
         self.bg_mesh = FineScaleMesh(bg_mesh_file)

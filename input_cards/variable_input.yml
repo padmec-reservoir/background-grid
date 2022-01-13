@@ -69,9 +69,51 @@ dual_mesh_face:
   sparse: True
   level: 0
 
+dual_mesh_face_all:
+  type: volumes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0
+
 support_region:
   type: volumes
   data size: 1
   data type: int
+  sparse: True
+  level: 0
+
+support_region_center:
+  type: volumes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0
+
+permeability:
+  type: volumes
+  data size: 9
+  data type: float
+  sparse: True
+  level: 0
+
+dirichlet:
+  type: volumes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+neumann:
+  type: faces
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+pressure:
+  type: volumes
+  data size: 1
+  data type: float
   sparse: True
   level: 0

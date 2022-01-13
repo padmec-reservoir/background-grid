@@ -1,6 +1,7 @@
 import numpy as np
 import networkx as nx
 import itertools
+import pickle
 from scipy.spatial import Delaunay
 from scipy.special import comb
 from preprocessor.meshHandle.finescaleMesh import FineScaleMesh
@@ -360,6 +361,13 @@ class MultiscaleCoarseMeshGenerator(object):
 
             self.primal_vol_support_region[coarse_vol] = fine_vols_in_support_region
             self.primal_vol_support_region_boundary[coarse_vol] = fine_vols_in_support_boundary
+
+    def export_support_region_map_to_file(self, inner_vols_filename: str, boundary_filename: str):
+        with open(inner_vols_filename, "wb") as fp:
+            pickle.dump(self.primal_vol_support_region, fp)
+
+        with open(boundary_filename, "wb") as fp:
+            pickle.dump(self.primal_vol_support_region_boundary, fp)
 
     def _get_disconnected_clusters(self) -> list:
         finescale_clusters = self._group_fine_volumes_by_bg_value()

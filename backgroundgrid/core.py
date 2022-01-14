@@ -255,6 +255,7 @@ class MultiscaleCoarseMeshGenerator(object):
                 dual_face_vols_filt = dual_face_vols[self.finescale_mesh.dual_mesh_edge[dual_face_vols].flatten() != 1]
 
                 self.finescale_mesh.dual_mesh_face[dual_face_vols_filt] = 1
+                self.finescale_mesh.dual_mesh_face_all[dual_face_vols] = 1
 
                 # Set an entry in the dual faces mapping.
                 f1, f2 = faces_centers_pairs_per_volume[coarse_vol, i]

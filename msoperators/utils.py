@@ -51,14 +51,28 @@ def assemble_tpfa_matrix(mesh):
     K_eq_prod = K_eq_all[0, :] * K_eq_all[1, :]
     faces_trans = (K_eq_prod / K_eq_sum) / h
 
-    # Assembly da matriz de transmissibilidades.
+    # Montagem da matriz de transmissibilidades.
     N_vols = len(mesh.volumes)
     A = lil_matrix((N_vols, N_vols))
 
-    A[internal_volumes[:, 0], internal_volumes[:, 1]] = -faces_trans
-    A[internal_volumes[:, 1], internal_volumes[:, 0]] = -faces_trans
+    dirichlet_values = mesh.dirichlet[:].flatten()
+    non_null_dirichlet_mask = dirichlet_values != np.inf
+    non_null_dirichlet_values = dirichlet_values[non_null_dirichlet_mask]
+    non_null_dirichlet_volumes_idx = mesh.volumes.all[non_null_dirichlet_mask]
 
-    A_diag = np.array([-row.sum() for row in A])
+    dirichlet_mask = ~np.isin(internal_volumes[:, 0], non_null_dirichlet_volumes_idx)
+    internal_volumes_filt = internal_volumes[dirichlet_mask]
+    faces_trans_filt = faces_trans[dirichlet_mask]
+
+    A[internal_volumes_filt[:, 0], internal_volumes_filt[:, 1]] = -faces_trans_filt
+
+    dirichlet_mask = ~np.isin(internal_volumes[:, 1], non_null_dirichlet_volumes_idx)
+    internal_volumes_filt = internal_volumes[dirichlet_mask]
+    faces_trans_filt = faces_trans[dirichlet_mask]
+
+    A[internal_volumes_filt[:, 1], internal_volumes_filt[:, 0]] = -faces_trans_filt
+
+    A_diag = -A.sum(axis=1)
     A.setdiag(A_diag)
 
     # Atribuição das condições de contorno de Neumann.
@@ -74,13 +88,8 @@ def assemble_tpfa_matrix(mesh):
         q[neumann_volumes] += non_null_neuman_values
 
     # Atribuição das condições de contorno de Dirichlet.
-    dirichlet_values = mesh.dirichlet[:].flatten()
-    non_null_dirichlet_mask = dirichlet_values != np.inf
-    non_null_dirichlet_values = dirichlet_values[non_null_dirichlet_mask]
-    non_null_dirichlet_volumes_idx = mesh.volumes.all[non_null_dirichlet_mask]
-
     if len(non_null_dirichlet_values) > 0:
-        A[non_null_dirichlet_volumes_idx] = 0.0
+        # A[non_null_dirichlet_volumes_idx] = 0.0
         A[non_null_dirichlet_volumes_idx, non_null_dirichlet_volumes_idx] = 1.0
         q[non_null_dirichlet_volumes_idx] = non_null_dirichlet_values
 

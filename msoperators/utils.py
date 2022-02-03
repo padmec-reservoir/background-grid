@@ -57,16 +57,16 @@ def assemble_tpfa_matrix(mesh):
 
     dirichlet_values = mesh.dirichlet[:].flatten()
     non_null_dirichlet_mask = dirichlet_values != np.inf
-    non_null_dirichlet_values = dirichlet_values[non_null_dirichlet_mask]
-    non_null_dirichlet_volumes_idx = mesh.volumes.all[non_null_dirichlet_mask]
+    p_dirichlet = dirichlet_values[non_null_dirichlet_mask]
+    dirichlet_volumes_idx = mesh.volumes.all[non_null_dirichlet_mask]
 
-    dirichlet_mask = ~np.isin(internal_volumes[:, 0], non_null_dirichlet_volumes_idx)
+    dirichlet_mask = ~np.isin(internal_volumes[:, 0], dirichlet_volumes_idx)
     internal_volumes_filt = internal_volumes[dirichlet_mask]
     faces_trans_filt = faces_trans[dirichlet_mask]
 
     A[internal_volumes_filt[:, 0], internal_volumes_filt[:, 1]] = -faces_trans_filt
 
-    dirichlet_mask = ~np.isin(internal_volumes[:, 1], non_null_dirichlet_volumes_idx)
+    dirichlet_mask = ~np.isin(internal_volumes[:, 1], dirichlet_volumes_idx)
     internal_volumes_filt = internal_volumes[dirichlet_mask]
     faces_trans_filt = faces_trans[dirichlet_mask]
 
@@ -88,11 +88,21 @@ def assemble_tpfa_matrix(mesh):
         q[neumann_volumes] += non_null_neuman_values
 
     # Atribuição das condições de contorno de Dirichlet.
-    if len(non_null_dirichlet_values) > 0:
-        # A[non_null_dirichlet_volumes_idx] = 0.0
-        A[non_null_dirichlet_volumes_idx, non_null_dirichlet_volumes_idx] = 1.0
-        q[non_null_dirichlet_volumes_idx] = non_null_dirichlet_values
+    if len(p_dirichlet) > 0:
+        d = np.zeros(N_vols)
+        d[dirichlet_volumes_idx] = p_dirichlet[:]
 
-    A_csr = A.tocsr()
+        A = A.tocsc()
+        q -= A * d
+        q[dirichlet_volumes_idx] = 0.0
+        q += d
 
-    return A_csr, q
+        A = A.tolil()
+        for j in dirichlet_volumes_idx:
+            A[j, :] = 0.0
+            A[:, j] = 0.0
+        A[dirichlet_volumes_idx, dirichlet_volumes_idx] = 1.0
+
+    A = A.tocsr()
+
+    return A, q

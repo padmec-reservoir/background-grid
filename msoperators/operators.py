@@ -46,47 +46,17 @@ class MsRSBOperator(object):
         D_inv.setdiag(1.0 / A_diag)
         Q = -omega * (D_inv @ self.A)
 
-        # Initialize matrix H of coarse volumes indices for each fine
-        # volume in the global support boundary.
+        # Get all volumes in the global support boundary.
         G = np.unique(list(chain.from_iterable(self.support_boundaries.values())))
-        H = dok_matrix((m, n))
-        I = {}
-        G_by_coarse_vol = {}
-        for coarse_id in self.support_boundaries:
-            fine_idx_in_support_region = np.array(self.support_regions[coarse_id])
-            fine_idx_mask = np.isin(fine_idx_in_support_region, G, assume_unique=True)
-
-            fine_idx_in_G = fine_idx_in_support_region[fine_idx_mask]
-            fine_idx_not_in_G = fine_idx_in_support_region[~fine_idx_mask]
-
-            H[fine_idx_in_G, coarse_id] = 1.0
-            I[coarse_id] = fine_idx_not_in_G
-            G_by_coarse_vol[coarse_id] = fine_idx_in_G
-
-        H = H.tocsr()
 
         # Construct prolongation operator iteratively.
         tol = 6e-3
         eps = 1e-10
-        d = dok_matrix((m, n))
         e = np.ones(m)
         not_in_G_mask = ~np.isin(fine_vols_idx, G, assume_unique=True)
         while np.linalg.norm(e, ord=np.inf) > tol:
-            # Compute estimate of increment.
-            d_hat = Q @ P
-            d_hat_sum = d_hat.multiply(H).sum(axis=1)
-
-            # Update increment.
-            for j in range(n):
-                # Set the increment for the fine volumes in the global
-                # support boundary.
-                G_idx = G_by_coarse_vol[j]
-                d[G_idx, j] = (d_hat[G_idx, j] -
-                               P[G_idx, j].multiply(d_hat_sum[G_idx])) / (1 + d_hat_sum[G_idx])
-
-                # Set the increment for the fine volumes in the support
-                # region but not in the global support boundary.
-                d[I[j], j] = d_hat[I[j], j].todense()
+            # Compute increment.
+            d = Q @ P
 
             # Update operator.
             P = P + d
@@ -94,12 +64,11 @@ class MsRSBOperator(object):
             P = P_sum @ P
 
             # Update error.
-            e = np.asarray(d_hat[not_in_G_mask].max(axis=0).todense()).flatten()
+            e = np.asarray(d[not_in_G_mask].max(axis=0).todense()).flatten()
 
             print("Current error: {}".format(np.linalg.norm(e, ord=np.inf)))
 
         # Reimpose dirichlet volumes in the prolongation operator.
-        print("Reimposing dirichlet BC.")
         dirichlet_coarse_ids = self.finescale_mesh.bg_volume[dirichlet_idx].flatten()
         P = P.tolil()
         P[dirichlet_idx, dirichlet_coarse_ids] = 1.0

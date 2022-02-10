@@ -23,7 +23,7 @@ class MsRSBOperator(object):
 
         self.finescale_mesh.bg_volume[:] = bg_volume_data
 
-    def compute_operators(self, dirichlet_idx=[]):
+    def compute_operators(self, dirichlet_idx=[], tol=1e-3):
         # Initialize mesh data.
         self._init_mesh_data()
 
@@ -50,7 +50,6 @@ class MsRSBOperator(object):
         G = np.unique(list(chain.from_iterable(self.support_boundaries.values())))
 
         # Construct prolongation operator iteratively.
-        tol = 6e-3
         eps = 1e-10
         e = np.ones(m)
         not_in_G_mask = ~np.isin(fine_vols_idx, G, assume_unique=True)

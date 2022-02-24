@@ -40,7 +40,7 @@ def assemble_tpfa_matrix(mesh):
     h = np.linalg.norm(a_vol_center - a_face_center)
 
     # Cálculo das permeabilidades equivalentes.
-    K_all = mesh.permeability[internal_volumes.flatten()].reshape((n_vols_pairs * 2, 3, 3))
+    K_all = mesh.permeability[internal_volumes.flatten(order="F")].reshape((n_vols_pairs * 2, 3, 3))
     N_dup = np.hstack((N, N)).reshape((len(N) * 2, 3))
     K_eq_partial = np.einsum("ij,ikj->ik", N_dup, K_all)
     K_eq_all_part = np.einsum("ij,ij->i", K_eq_partial, N_dup) / np.linalg.norm(N_dup, axis=1)

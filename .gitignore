@@ -2,3 +2,7 @@
 .vscode/
 *.pyc
 __pycache__
+visualizations/
+np-files/
+mesh-files-results/
+/*.py

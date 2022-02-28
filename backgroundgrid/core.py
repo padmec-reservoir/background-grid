@@ -356,9 +356,17 @@ class MultiscaleCoarseMeshGenerator(object):
             # Define the proper support region boundary.
             fine_vols_in_support_region.extend(fine_vols_in_pre_support_boundary)
             fine_vols_in_support_region_neighbors = self.all_fine_volumes_neighbors[fine_vols_in_support_region]
-            fine_vols_in_support_boundary = [
-                vol for vol, neighbors in zip(fine_vols_in_support_region, fine_vols_in_support_region_neighbors)
-                if np.any(~np.isin(neighbors, fine_vols_in_support_region, assume_unique=True))]
+
+            n = max([len(row) for row in fine_vols_in_support_region_neighbors])
+            fine_vols_in_support_region_neighbors_pad = np.zeros(
+                (len(fine_vols_in_support_region_neighbors), n), dtype=int)
+            for i, row in enumerate(fine_vols_in_support_region_neighbors):
+                fine_vols_in_support_region_neighbors_pad[i, :len(row)] += row
+                fine_vols_in_support_region_neighbors_pad[i, len(row):] += row[0]
+
+            fine_vols_in_sb_mask = np.any(~np.isin(fine_vols_in_support_region_neighbors_pad,
+                                          fine_vols_in_support_region), axis=1)
+            fine_vols_in_support_boundary = np.array(fine_vols_in_support_region)[fine_vols_in_sb_mask]
 
             self.primal_vol_support_region[coarse_vol] = fine_vols_in_support_region
             self.primal_vol_support_region_boundary[coarse_vol] = fine_vols_in_support_boundary

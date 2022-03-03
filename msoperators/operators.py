@@ -49,13 +49,18 @@ class MsRSBOperator(object):
         # Get all volumes in the global support boundary.
         G = np.unique(list(chain.from_iterable(self.support_boundaries.values())))
 
+        M = lil_matrix((n, m))
+        for j, I_j in self.support_regions.items():
+            M[j, I_j] = 1.0
+        M = M.tocsc().transpose()
+
         # Construct prolongation operator iteratively.
         eps = 1e-10
         e = np.ones(m)
         not_in_G_mask = ~np.isin(fine_vols_idx, G, assume_unique=True)
         while np.linalg.norm(e, ord=np.inf) > tol:
             # Compute increment.
-            d = Q @ P
+            d = (Q @ P).multiply(M)
 
             # Update operator.
             P = P + d

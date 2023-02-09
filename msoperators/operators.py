@@ -57,8 +57,9 @@ class MsRSBOperator(object):
         # Construct prolongation operator iteratively.
         eps = 1e-10
         e = np.ones(m)
+        local_err = np.inf
         not_in_G_mask = ~np.isin(fine_vols_idx, G, assume_unique=True)
-        while np.linalg.norm(e, ord=np.inf) > tol:
+        while local_err > tol:
             # Compute increment.
             d = (Q @ P).multiply(M)
 
@@ -69,8 +70,9 @@ class MsRSBOperator(object):
 
             # Update error.
             e = np.asarray(d[not_in_G_mask].max(axis=0).todense()).flatten()
+            local_err = np.linalg.norm(e, ord=np.inf)
 
-            print("Current error: {}".format(np.linalg.norm(e, ord=np.inf)))
+            print("Current error: {}".format(local_err))
 
         # Reimpose dirichlet volumes in the prolongation operator.
         dirichlet_coarse_ids = self.finescale_mesh.bg_volume[dirichlet_idx].flatten()

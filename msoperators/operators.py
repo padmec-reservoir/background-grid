@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import dia_matrix, lil_matrix, dok_matrix, diags
+from scipy.sparse import dia_matrix, lil_matrix, diags
 from itertools import chain
 
 

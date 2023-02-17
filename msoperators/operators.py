@@ -23,7 +23,7 @@ class MsRSBOperator(object):
 
         self.finescale_mesh.bg_volume[:] = bg_volume_data
 
-    def compute_operators(self, tol=1e-3):
+    def compute_operators(self, tol=1e-3, maxiter=50):
         # Initialize mesh data.
         self._init_mesh_data()
 
@@ -102,8 +102,10 @@ class MsRSBOperator(object):
         # Construct the prolongation operator iteratively.
         e = np.ones(m)
         local_err = np.inf
-        while local_err > tol:
+        niter = 0
+        while local_err > tol and niter < maxiter:
             niter += 1
+
             # Compute the initial increment.
             d_hat = (Q @ P).multiply(M)
 

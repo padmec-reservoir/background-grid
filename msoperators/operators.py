@@ -80,7 +80,7 @@ class MsRSBOperator(object):
         I[:, dirichlet_idx] = 0
 
         # Remove the centres
-        xP = np.nonzero(self.finescale_mesh.primal_volume_center[:])[0]
+        xP = np.nonzero(self.finescale_mesh.support_region_center[:])[0]
         xP_idx = self.finescale_mesh.bg_volume[xP].flatten()
         M[xP_idx, xP] = 0
         H[xP_idx, xP] = 0

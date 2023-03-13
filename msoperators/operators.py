@@ -43,12 +43,15 @@ class MsRSBOperator(object):
         P[dirichlet_idx, dirichlet_primal_idx] = 1.0
         P = P.tocsr()
 
+        # Compute the preconditioned matrix.
+        diag_A = self.A.diagonal()
+        A_row_sum = self.A.sum(axis=1).A.ravel()
+        A_precond = self.A - diags(A_row_sum - diag_A)
+
         # Initialize the increment Q of the prolongation operator.
-        omega = 2.0 / 3.0
-        D_inv = dia_matrix((m, m))
-        A_diag = self.A.diagonal()
-        D_inv.setdiag(1.0 / A_diag)
-        Q = -omega * (D_inv @ self.A)
+        omega = 2 / 3
+        D_inv = diags(1 / A_precond.diagonal())
+        Q = -omega * (D_inv @ A_precond)
 
         # Get all volumes in the global support boundary.
         all_vols_in_sup_boundary = list(chain.from_iterable(self.support_boundaries.values()))

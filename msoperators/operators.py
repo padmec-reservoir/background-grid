@@ -74,11 +74,6 @@ class MsRSBOperator(object):
             H[j, H_j] = 1.0
             I[j, I_j] = 1.0
 
-        # Remove the Dirichlet volumes from the computation.
-        M[:, dirichlet_idx] = 0
-        H[:, dirichlet_idx] = 0
-        I[:, dirichlet_idx] = 0
-
         # Remove the centres
         xP = np.nonzero(self.finescale_mesh.support_region_center[:])[0]
         xP_idx = self.finescale_mesh.bg_volume[xP].flatten()

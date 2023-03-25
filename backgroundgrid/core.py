@@ -3,7 +3,6 @@ import networkx as nx
 import itertools
 import pickle
 from scipy.spatial import Delaunay
-from scipy.special import comb
 from preprocessor.meshHandle.finescaleMesh import FineScaleMesh
 from .utils import list_argmax, remove_tuples_duplicate
 

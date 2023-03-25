@@ -211,6 +211,7 @@ class MultiscaleCoarseMeshGenerator(object):
 
         # Number of vertices in a fine volume.
         Nv_fine = self.finescale_mesh.volumes.connectivities[0].shape[0]
+        tol = 10 * np.finfo(np.float64).eps
         for coarse_vol in coarse_volumes:
             fine_vols_in_coarse_vol = self.finescale_mesh.volumes.all[fine_vols_bg_value == coarse_vol]
             N_fine_vols = fine_vols_in_coarse_vol.shape[0]
@@ -251,7 +252,7 @@ class MultiscaleCoarseMeshGenerator(object):
                 VxB_dot_VxA = np.einsum("ij,ij->i", VxB, VxA)
 
                 # Check if the orthogonal vectors have opposing senses.
-                dual_face_vols = fine_vols_intersected_by_face_plane[(AxB_dot_AxV >= 0) & (VxB_dot_VxA <= 0)]
+                dual_face_vols = fine_vols_intersected_by_face_plane[(AxB_dot_AxV >= -tol) & (VxB_dot_VxA <= tol)]
                 dual_face_vols_filt = dual_face_vols[self.finescale_mesh.dual_mesh_edge[dual_face_vols].flatten() != 1]
 
                 self.finescale_mesh.dual_mesh_face[dual_face_vols_filt] = 1

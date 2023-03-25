@@ -261,7 +261,7 @@ class MultiscaleCoarseMeshGenerator(object):
                 # Set an entry in the dual faces mapping.
                 f1, f2 = faces_centers_pairs_per_volume[coarse_vol, i]
                 key = ((coarse_vol, f1), (coarse_vol, f2)) if f1 < f2 else ((coarse_vol, f2), (coarse_vol, f1))
-                self.fine_vols_by_dual_face[key] = dual_face_vols_filt
+                self.fine_vols_by_dual_face[key] = dual_face_vols
 
     def set_support_region(self) -> None:
         # Find the neighbors for each interface.

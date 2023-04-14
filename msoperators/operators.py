@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import dia_matrix, lil_matrix, diags
+from scipy.sparse import lil_matrix, diags, block_diag
 from itertools import chain
 
 
@@ -15,9 +15,11 @@ class MsRSBOperator(object):
 
     def _init_mesh_data(self):
         all_volumes = self.finescale_mesh.core.all_volumes[:]
-        all_tags = self.finescale_mesh.core.mb.tag_get_tags_on_entity(all_volumes[0])
+        all_tags = self.finescale_mesh.core.mb.tag_get_tags_on_entity(
+            all_volumes[0])
 
-        bg_volume_tag = [tag for tag in all_tags if tag.get_name() == "bg_volume"].pop()
+        bg_volume_tag = [
+            tag for tag in all_tags if tag.get_name() == "bg_volume"].pop()
 
         bg_volume_data = self.finescale_mesh.core.mb.tag_get_data(bg_volume_tag,
                                                                   all_volumes, flat=True)
@@ -37,7 +39,8 @@ class MsRSBOperator(object):
 
         dirichlet_idx = self.finescale_mesh.faces.bridge_adjacencies(
             self.finescale_mesh.faces.boundary[:], 2, 3).flatten()
-        dirichlet_primal_idx = self.finescale_mesh.bg_volume[dirichlet_idx].flatten()
+        dirichlet_primal_idx = self.finescale_mesh.bg_volume[dirichlet_idx].flatten(
+        )
 
         P = lil_matrix((m, n))
         P[fine_vols_idx, bg_volume_values] = 1.0
@@ -55,7 +58,8 @@ class MsRSBOperator(object):
         Q = -omega * (D_inv @ A_precond)
 
         # Get all volumes in the global support boundary.
-        all_vols_in_sup_boundary = list(chain.from_iterable(self.support_boundaries.values()))
+        all_vols_in_sup_boundary = list(
+            chain.from_iterable(self.support_boundaries.values()))
 
         # Get all volumes in the global support boundary (G).
         G = np.unique(all_vols_in_sup_boundary)
@@ -88,7 +92,8 @@ class MsRSBOperator(object):
         # Force the volumes belonging to a single support region
         # to hold the maximum value of the basis function.
         vols_in_a_single_sr = np.nonzero(M.sum(axis=0).A.ravel() == 1)[0]
-        vols_in_a_single_sr_primal_ids = self.finescale_mesh.bg_volume[vols_in_a_single_sr].flatten()
+        vols_in_a_single_sr_primal_ids = self.finescale_mesh.bg_volume[vols_in_a_single_sr].flatten(
+        )
         M[vols_in_a_single_sr_primal_ids, vols_in_a_single_sr] = 0
         H[vols_in_a_single_sr_primal_ids, vols_in_a_single_sr] = 0
         I[vols_in_a_single_sr_primal_ids, vols_in_a_single_sr] = 0
@@ -112,7 +117,8 @@ class MsRSBOperator(object):
             P_H = P.multiply(H)
             d_hat_in_H = d_hat.multiply(H)
             Sd_H = d_hat_in_H.sum(axis=1).A.ravel()
-            d_H = (d_hat_in_H - P_H.multiply(Sd_H[:, None])).multiply((1 + Sd_H[:, None]) ** -1)
+            d_H = (
+                d_hat_in_H - P_H.multiply(Sd_H[:, None])).multiply((1 + Sd_H[:, None]) ** -1)
 
             # Filter the increment for the volumes outside of G.
             d_I = d_hat.multiply(I)

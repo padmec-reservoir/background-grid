@@ -5,12 +5,13 @@ from itertools import chain
 
 class MsRSBOperator(object):
     def __init__(self, finescale_mesh, coarse_mesh,
-                 support_regions, support_boundaries, A):
+                 support_regions, support_boundaries, A, q):
         self.finescale_mesh = finescale_mesh
         self.coarse_mesh = coarse_mesh
         self.support_regions = support_regions
         self.support_boundaries = support_boundaries
         self.A = A
+        self.q = q
 
     def _init_mesh_data(self):
         all_volumes = self.finescale_mesh.core.all_volumes[:]

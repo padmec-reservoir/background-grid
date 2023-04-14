@@ -136,3 +136,64 @@ class MsRSBOperator(object):
         R = P.transpose()
 
         return P, R
+
+    def assemble_neumann_problem(self, p_f):
+        """Assemble the Neumann problem to compute a conservative
+        finescale pressure field.
+
+        Parameters
+        ----------
+        p_f: The multiscale solution for the pressure field, i.e., the prolongated solution.
+
+        Returns
+        -------
+        A_neu: The LHS of the Neumann problem as a block diagonal matrix.
+        b_neu: The RHS of the Neumann problem.
+        idx_map: The mapping from the local indices to the global sorted indices.
+        """
+        A_blocks = []
+        b_neu = np.zeros(len(self.finescale_mesh.volumes))
+
+        local_idx_map = np.zeros(len(self.finescale_mesh.volumes))
+
+        all_fine_vols = self.finescale_mesh.volumes.all[:]
+        all_coarse_vols = self.coarse_mesh.volumes.all[:]
+        dirichlet_vols = np.nonzero(
+            self.finescale_mesh.dirichlet[:].flatten())[0]
+        coarse_volume_values = self.finescale_mesh.bg_volume[:].flatten()
+
+        primal_centers_fine_idx = np.nonzero(
+            self.finescale_mesh.primal_volume_center[:])[0]
+        primal_centers_coarse_idx = self.finescale_mesh.bg_volume[primal_centers_fine_idx].flatten(
+        )
+
+        it = 0
+        for cvol in all_coarse_vols:
+            # Assemble the local problems by slicing the part of the main
+            # problem concerning only the fine cells in the coarse cell.
+            fine_idx = all_fine_vols[coarse_volume_values == cvol]
+            A_local = self.A[fine_idx[:, None], fine_idx]
+            b_local = self.q[fine_idx]
+
+            # If the coarse cell does not contain any dirichlet BC, then
+            # force the primal center to hold the value of the prolongated
+            # pressure.
+            if len(np.intersect1d(fine_idx, dirichlet_vols, assume_unique=True)) == 0:
+                cvol_center = primal_centers_fine_idx[primal_centers_coarse_idx == cvol][0]
+                cvol_center_local_idx = np.argwhere(
+                    fine_idx == cvol_center)[0, 0]
+                A_local[cvol_center_local_idx, :] = 0
+                A_local[cvol_center_local_idx, cvol_center_local_idx] = 1
+                b_local[cvol_center_local_idx] = p_f[cvol_center]
+
+            # Add the local problem to the global block matrix.
+            A_blocks.append(A_local)
+            b_neu[it:(it + len(fine_idx))] = b_local[:]
+            local_idx_map[it:(it + len(fine_idx))] = fine_idx[:]
+
+            it += len(fine_idx)
+
+        A_neu = block_diag(A_blocks, format="csr")
+        idx_map = np.argsort(local_idx_map)
+
+        return A_neu, b_neu, idx_map

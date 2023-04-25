@@ -13,6 +13,17 @@ class MsRSBOperator(object):
         self.A = A
         self.q = q
 
+        # MPFA-D parameters.
+        self.in_vols_pairs = None
+        self.h_L = None
+        self.h_R = None
+        self.Ns = None
+        self.Ns_norm = None
+        self.Kn_L = None
+        self.Kn_R = None
+        self.D_JI = None
+        self.D_JK = None
+
     def _init_mesh_data(self):
         all_volumes = self.finescale_mesh.core.all_volumes[:]
         all_tags = self.finescale_mesh.core.mb.tag_get_tags_on_entity(
@@ -203,3 +214,208 @@ class MsRSBOperator(object):
         idx_map = np.argsort(local_idx_map)
 
         return A_neu, b_neu, idx_map
+
+    def _set_internal_vols_pairs(self):
+        """Set the pairs of volumes sharing an internal face in the 
+        attribute `in_vols_pairs`.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        internal_faces = self.finescale_mesh.faces.internal[:]
+        self.in_vols_pairs = self.finescale_mesh.faces.bridge_adjacencies(
+            internal_faces, 2, 3)
+
+    def _set_normal_distances(self):
+        """Compute the distances from the center of the internal faces to their
+        adjacent volumes.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        internal_faces = self.finescale_mesh.faces.internal[:]
+
+        L = self.finescale_mesh.volumes.center[self.in_vols_pairs[:, 0]]
+        R = self.finescale_mesh.volumes.center[self.in_vols_pairs[:, 1]]
+
+        in_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            internal_faces, 0, 0)
+        J_idx = in_faces_nodes[:, 1]
+        J = self.finescale_mesh.nodes.coords[J_idx]
+
+        LJ = J - L
+        LR = J - R
+
+        self.h_L = np.abs(np.einsum("ij,ij->i", self.Ns, LJ) / self.Ns_norm)
+        self.h_R = np.abs(np.einsum("ij,ij->i", self.Ns, LR) / self.Ns_norm)
+
+    def _set_normal_vectors(self):
+        """Set the attribute `Ns` which stores the normal vectors 
+        to the internal faces.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        # Retrieve the internal faces.
+        internal_faces = self.finescale_mesh.faces.internal[:]
+
+        # Retrieve the points that form the components of the normal vectors.
+        internal_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            internal_faces,
+            0, 0)
+        I_idx = internal_faces_nodes[:, 0]
+        J_idx = internal_faces_nodes[:, 1]
+        K_idx = internal_faces_nodes[:, 2]
+
+        I = self.finescale_mesh.nodes.coords[I_idx]
+        J = self.finescale_mesh.nodes.coords[J_idx]
+        K = self.finescale_mesh.nodes.coords[K_idx]
+
+        n_vols_pairs = len(internal_faces)
+        internal_volumes_centers_flat = self.finescale_mesh.volumes.center[self.in_vols_pairs.flatten(
+        )]
+        internal_volumes_centers = internal_volumes_centers_flat.reshape((
+            n_vols_pairs,
+            2, 3))
+
+        LJ = J - internal_volumes_centers[:, 0]
+
+        # Set the normal vectors.
+        self.Ns = 0.5 * np.cross(I - J, K - J)
+        self.Ns_norm = np.linalg.norm(self.Ns, axis=1)
+
+        N_sign = np.sign(np.einsum("ij,ij->i", LJ, self.Ns))
+        (self.in_vols_pairs[N_sign < 0, 0],
+         self.in_vols_pairs[N_sign < 0, 1]) = (self.in_vols_pairs[N_sign < 0, 1],
+                                               self.in_vols_pairs[N_sign < 0, 0])
+
+    def _set_normal_permeabilities(self):
+        """Compute the normal projections of the permeability tensors.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+
+        lvols = self.in_vols_pairs[:, 0]
+        rvols = self.in_vols_pairs[:, 1]
+
+        KL = self.finescale_mesh.permeability[lvols].reshape(
+            (n_vols_pairs, 3, 3))
+        KR = self.finescale_mesh.permeability[rvols].reshape(
+            (n_vols_pairs, 3, 3))
+
+        KnL_pre = np.einsum("ij,ikj->ik", self.Ns, KL)
+        KnR_pre = np.einsum("ij,ikj->ik", self.Ns, KR)
+
+        KnL = np.einsum("ij,ij->i", KnL_pre, self.Ns) / self.Ns_norm ** 2
+        KnR = np.einsum("ij,ij->i", KnR_pre, self.Ns) / self.Ns_norm ** 2
+
+        self.Kn_L = KnL[:]
+        self.Kn_R = KnR[:]
+
+    def _compute_tangent_permeabilities(self, tau_ij):
+        """Computes the tangent projection of the permeability tensors
+        given vectors `tau_ij`.
+
+        Parameters
+        ----------
+        tau_ij: A N x 3 numpy array representing stacked vectors.
+
+        Returns
+        -------
+        A tuple of arrays containing the projections to the left and
+        to the right of the internal faces.
+        """
+        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+
+        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+
+        lvols = self.in_vols_pairs[:, 0]
+        rvols = self.in_vols_pairs[:, 1]
+
+        KL = self.finescale_mesh.permeability[lvols].reshape(
+            (n_vols_pairs, 3, 3))
+        KR = self.finescale_mesh.permeability[rvols].reshape(
+            (n_vols_pairs, 3, 3))
+
+        Kt_ij_L_pre = np.einsum("ij,ikj->ik", self.Ns, KL)
+        Kt_ij_R_pre = np.einsum("ij,ikj->ik", self.Ns, KR)
+
+        Kt_ij_L = np.einsum("ij,ij->i", Kt_ij_L_pre,
+                            tau_ij) / self.Ns_norm ** 2
+        Kt_ij_R = np.einsum("ij,ij->i", Kt_ij_R_pre,
+                            tau_ij) / self.Ns_norm ** 2
+
+        return Kt_ij_L, Kt_ij_R
+
+    def _set_cdt_coefficients(self):
+        """Compute the cross coefficients terms of the MPFA-D scheme.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        A tuple of numpy arrays containing the terms D_JK and D_JI.
+        """
+        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+
+        in_vols_pairs_flat = self.in_vols_pairs.flatten()
+        in_vols_centers_flat = self.finescale_mesh.volumes.center[in_vols_pairs_flat]
+        in_vols_centers = in_vols_centers_flat.reshape((n_vols_pairs, 2, 3))
+
+        LR = in_vols_centers[:, 1, :] - in_vols_centers[:, 0, :]
+
+        internal_faces = self.finescale_mesh.faces.internal[:]
+
+        internal_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            internal_faces,
+            0, 0)
+        I_idx = internal_faces_nodes[:, 0]
+        J_idx = internal_faces_nodes[:, 1]
+        K_idx = internal_faces_nodes[:, 2]
+
+        I = self.finescale_mesh.nodes.coords[I_idx]
+        J = self.finescale_mesh.nodes.coords[J_idx]
+        K = self.finescale_mesh.nodes.coords[K_idx]
+
+        tau_JK = np.cross(self.Ns, K - J)
+        tau_JI = np.cross(self.Ns, I - J)
+
+        Kt_JK_L, Kt_JK_R = self._compute_tangent_permeabilities(tau_JK)
+        Kt_JI_L, Kt_JI_R = self._compute_tangent_permeabilities(tau_JI)
+
+        A1_JK = np.einsum("ij,ij->i", tau_JK, LR) / (self.Ns_norm ** 2)
+        A2_JK = (self.h_L * (Kt_JK_L / self.Kn_L) + self.h_R *
+                 (Kt_JK_R / self.Kn_R)) / self.Ns_norm
+        D_JK = A1_JK - A2_JK
+
+        A1_JI = np.einsum("ij,ij->i", tau_JI, LR) / (self.Ns_norm ** 2)
+        A2_JI = (self.h_L * (Kt_JI_L / self.Kn_L) + self.h_R *
+                 (Kt_JI_R / self.Kn_R)) / self.Ns_norm
+        D_JI = A1_JI - A2_JI
+
+        self.D_JK = D_JK
+        self.D_JI = D_JI

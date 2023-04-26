@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import lil_matrix, diags, block_diag
+from scipy.sparse import csr_matrix, lil_matrix, diags, block_diag
 from itertools import chain
 
 
@@ -174,12 +174,15 @@ class MsRSBOperator(object):
         b_neu: The RHS of the Neumann problem.
         idx_map: The mapping from the local indices to the global sorted indices.
         """
+        self._set_neumann_problem_params()
+
         A_blocks = []
         b_neu = np.zeros(len(self.finescale_mesh.volumes))
 
         local_idx_map = np.zeros(len(self.finescale_mesh.volumes))
 
         all_fine_vols = self.finescale_mesh.volumes.all[:]
+        all_fine_faces = self.finescale_mesh.faces.all[:]
         all_coarse_vols = self.coarse_mesh.volumes.all[:]
         dirichlet_vols = np.nonzero(
             self.finescale_mesh.dirichlet[:].flatten())[0]
@@ -190,6 +193,27 @@ class MsRSBOperator(object):
         primal_centers_coarse_idx = self.finescale_mesh.bg_volume[primal_centers_fine_idx].flatten(
         )
 
+        in_faces = self.finescale_mesh.faces.internal[:]
+        fine_vols_faces = self.finescale_mesh.volumes.adjacencies[:]
+        fine_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            all_fine_faces, 0, 0)
+
+        primal_faces_flag = self.finescale_mesh.primal_face[:].flatten()
+        primal_faces = all_fine_faces[primal_faces_flag == 1]
+        in_primal_faces = np.intersect1d(primal_faces, in_faces)
+
+        in_faces_flux = self._compute_ms_flux(p_f)
+        F = np.zeros(len(self.finescale_mesh.faces))
+        F[in_faces] = in_faces_flux[:]
+
+        d = - np.ones(in_faces.shape[0] * 2)
+        d[in_faces.shape[0]:] *= -1
+        in_faces_idx = np.hstack(
+            (np.arange(in_faces.shape[0]), np.arange(in_faces.shape[0])))
+        in_vols_flat = self.in_vols_pairs.flatten(order="F")
+        div = csr_matrix((d, (in_vols_flat, in_faces_idx)), shape=(
+            all_fine_vols.shape[0], in_faces.shape[0]))
+
         it = 0
         for cvol in all_coarse_vols:
             # Assemble the local problems by slicing the part of the main
@@ -197,6 +221,20 @@ class MsRSBOperator(object):
             fine_idx = all_fine_vols[coarse_volume_values == cvol]
             A_local = self.A[fine_idx[:, None], fine_idx]
             b_local = self.q[fine_idx]
+
+            # Assign the neumann BC for the internal primal faces.
+            cvol_faces = fine_vols_faces[fine_idx].flatten()
+            cvol_internal_bfaces = np.intersect1d(cvol_faces, in_primal_faces)
+            cvol_internal_bfaces_idx = self.in_faces_map[cvol_internal_bfaces]
+            b_local += (div[:, cvol_internal_bfaces_idx] @
+                        F[cvol_internal_bfaces])[fine_idx]
+
+            # Handle internal faces with nodes on the global boundary.
+            cvol_bnodes = fine_faces_nodes[cvol_internal_bfaces]
+            I, J, K = cvol_bnodes[:, 0], cvol_bnodes[:, 1], cvol_bnodes[:, 2]
+            q_local = self._handle_boundary_nodes_neu_problem(
+                p_f, cvol_internal_bfaces, I, J, K)
+            b_local += q_local[fine_idx]
 
             # If the coarse cell does not contain any dirichlet BC, then
             # force the primal center to hold the value of the prolongated

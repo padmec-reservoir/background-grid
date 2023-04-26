@@ -14,6 +14,11 @@ class MsRSBOperator(object):
         self.q = q
 
         # MPFA-D parameters.
+        in_faces = self.finescale_mesh.faces.internal[:]
+        in_faces_map = -np.ones(len(self.finescale_mesh.faces), dtype=int)
+        in_faces_map[in_faces] = np.arange(in_faces.shape[0])
+        self.in_faces_map = in_faces_map
+
         self.mpfad_weights = mpfad_weights
         self.in_vols_pairs = None
         self.h_L = None

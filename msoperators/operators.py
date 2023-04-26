@@ -4,8 +4,8 @@ from itertools import chain
 
 
 class MsRSBOperator(object):
-    def __init__(self, finescale_mesh, coarse_mesh,
-                 support_regions, support_boundaries, A, q):
+    def __init__(self, finescale_mesh, coarse_mesh, support_regions,
+                 support_boundaries, A, q, mpfad_weights):
         self.finescale_mesh = finescale_mesh
         self.coarse_mesh = coarse_mesh
         self.support_regions = support_regions
@@ -14,6 +14,7 @@ class MsRSBOperator(object):
         self.q = q
 
         # MPFA-D parameters.
+        self.mpfad_weights = mpfad_weights
         self.in_vols_pairs = None
         self.h_L = None
         self.h_R = None

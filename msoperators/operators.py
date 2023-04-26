@@ -223,6 +223,45 @@ class MsRSBOperator(object):
         self._set_normal_permeabilities()
         self._set_cdt_coefficients()
 
+    def _compute_ms_flux(self, p_ms):
+        """Computes the MPFA-D flux through the internal faces.
+
+        Parameters
+        ----------
+        p_ms: The pressure field computed using MsCV.
+
+        Returns
+        -------
+        F_in: The flux through the internal faces.
+        """
+        L, R = self.in_vols_pairs[:, 0], self.in_vols_pairs[:, 1]
+        uL, uR = p_ms[L], p_ms[R]
+
+        in_faces = self.finescale_mesh.faces.internal[:]
+        in_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            in_faces, 0, 0)
+        I, J, K = (
+            in_faces_nodes[:, 0],
+            in_faces_nodes[:, 1],
+            in_faces_nodes[:, 2])
+
+        Kn_prod = self.Kn_L[:] * self.Kn_R[:]
+        Keq = Kn_prod / ((self.Kn_L[:] * self.h_R[:]) +
+                         (self.Kn_R[:] * self.h_L[:]))
+        Keq_N = self.Ns_norm[:] * Keq
+
+        djk, dji = self.D_JK[:], self.D_JI[:]
+
+        wI, wJ, wK = (self.mpfad_weights[I, :],
+                      self.mpfad_weights[J, :],
+                      self.mpfad_weights[K, :])
+        uI, uJ, uK = wI @ p_ms, wJ @ p_ms, wK @ p_ms
+
+        F_in = -Keq_N * ((uR - uL) - 0.5 * djk *
+                         (uJ - uI) + 0.5 * dji * (uJ - uK))
+
+        return F_in
+
     def _set_internal_vols_pairs(self):
         """Set the pairs of volumes sharing an internal face in the 
         attribute `in_vols_pairs`.

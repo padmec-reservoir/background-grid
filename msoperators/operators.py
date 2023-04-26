@@ -267,6 +267,47 @@ class MsRSBOperator(object):
 
         return F_in
 
+    def _handle_boundary_nodes_neu_problem(self, p_ms, faces, I, J, K):
+        in_faces_idx = self.in_faces_map[faces]
+
+        I_left_vol, I_right_vol = (
+            self.in_vols_pairs[in_faces_idx, 0],
+            self.in_vols_pairs[in_faces_idx, 1])
+        J_left_vol, J_right_vol = (
+            self.in_vols_pairs[in_faces_idx, 0],
+            self.in_vols_pairs[in_faces_idx, 1])
+        K_left_vol, K_right_vol = (
+            self.in_vols_pairs[in_faces_idx, 0],
+            self.in_vols_pairs[in_faces_idx, 1])
+
+        wI, wJ, wK = (self.mpfad_weights[I, :],
+                      self.mpfad_weights[J, :],
+                      self.mpfad_weights[K, :])
+        uI, uJ, uK = wI @ p_ms, wJ @ p_ms, wK @ p_ms
+
+        Kn_prod = self.Kn_L[in_faces_idx] * self.Kn_R[in_faces_idx]
+        Keq = Kn_prod / ((self.Kn_L[in_faces_idx] * self.h_R[in_faces_idx]) +
+                         (self.Kn_R[in_faces_idx] * self.h_L[in_faces_idx]))
+        Keq_N = self.Ns_norm[in_faces_idx] * Keq
+
+        I_term = 0.5 * Keq_N * self.D_JK[in_faces_idx] * uI
+        J_term = 0.5 * Keq_N * \
+            (self.D_JI[in_faces_idx] - self.D_JK[in_faces_idx]) * uJ
+        K_term = -0.5 * Keq_N * self.D_JI[in_faces_idx] * uK
+
+        q = np.zeros(len(self.finescale_mesh.volumes))
+
+        np.add.at(q, I_left_vol, I_term)
+        np.add.at(q, I_right_vol, -I_term)
+
+        np.add.at(q, J_left_vol, J_term)
+        np.add.at(q, J_right_vol, -J_term)
+
+        np.add.at(q, K_left_vol, K_term)
+        np.add.at(q, K_right_vol, -K_term)
+
+        return q
+
     def _set_internal_vols_pairs(self):
         """Set the pairs of volumes sharing an internal face in the 
         attribute `in_vols_pairs`.

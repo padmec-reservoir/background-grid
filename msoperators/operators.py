@@ -216,6 +216,13 @@ class MsRSBOperator(object):
 
         return A_neu, b_neu, idx_map
 
+    def _set_neumann_problem_params(self):
+        self._set_internal_vols_pairs()
+        self._set_normal_vectors()
+        self._set_normal_distances()
+        self._set_normal_permeabilities()
+        self._set_cdt_coefficients()
+
     def _set_internal_vols_pairs(self):
         """Set the pairs of volumes sharing an internal face in the 
         attribute `in_vols_pairs`.

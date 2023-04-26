@@ -3,7 +3,7 @@ from scipy.sparse import csr_matrix, lil_matrix, diags, block_diag
 from itertools import chain
 
 
-class MsRSBOperator(object):
+class MsCVOperator(object):
     def __init__(self, finescale_mesh, coarse_mesh, support_regions,
                  support_boundaries, A, q, mpfad_weights):
         self.finescale_mesh = finescale_mesh

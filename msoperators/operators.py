@@ -19,6 +19,7 @@ class MsCVOperator(object):
         in_faces_map[in_faces] = np.arange(in_faces.shape[0])
         self.in_faces_map = in_faces_map
 
+        self.div = None
         self.mpfad_weights = mpfad_weights
         self.in_vols_pairs = None
         self.h_L = None
@@ -206,14 +207,6 @@ class MsCVOperator(object):
         F = np.zeros(len(self.finescale_mesh.faces))
         F[in_faces] = in_faces_flux[:]
 
-        d = - np.ones(in_faces.shape[0] * 2)
-        d[in_faces.shape[0]:] *= -1
-        in_faces_idx = np.hstack(
-            (np.arange(in_faces.shape[0]), np.arange(in_faces.shape[0])))
-        in_vols_flat = self.in_vols_pairs.flatten(order="F")
-        div = csr_matrix((d, (in_vols_flat, in_faces_idx)), shape=(
-            all_fine_vols.shape[0], in_faces.shape[0]))
-
         it = 0
         for cvol in all_coarse_vols:
             # Assemble the local problems by slicing the part of the main
@@ -226,7 +219,7 @@ class MsCVOperator(object):
             cvol_faces = fine_vols_faces[fine_idx].flatten()
             cvol_internal_bfaces = np.intersect1d(cvol_faces, in_primal_faces)
             cvol_internal_bfaces_idx = self.in_faces_map[cvol_internal_bfaces]
-            b_local += (div[:, cvol_internal_bfaces_idx] @
+            b_local += (self.div[:, cvol_internal_bfaces_idx] @
                         F[cvol_internal_bfaces])[fine_idx]
 
             # Handle internal faces with nodes on the global boundary.
@@ -265,6 +258,7 @@ class MsCVOperator(object):
         self._set_normal_distances()
         self._set_normal_permeabilities()
         self._set_cdt_coefficients()
+        self._set_div_operator()
 
     def _compute_ms_flux(self, p_ms):
         """Computes the MPFA-D flux through the internal faces.
@@ -550,3 +544,13 @@ class MsCVOperator(object):
 
         self.D_JK = D_JK
         self.D_JI = D_JI
+
+    def _set_div_operator(self):
+        in_faces = self.finescale_mesh.faces.internal[:]
+        d = - np.ones(in_faces.shape[0] * 2)
+        d[in_faces.shape[0]:] *= -1
+        in_faces_idx = np.hstack(
+            (np.arange(in_faces.shape[0]), np.arange(in_faces.shape[0])))
+        in_vols_flat = self.in_vols_pairs.flatten(order="F")
+        self.div = csr_matrix((d, (in_vols_flat, in_faces_idx)),
+                              shape=(len(self.finescale_mesh.volumes), in_faces.shape[0]))

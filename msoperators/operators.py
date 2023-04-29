@@ -252,6 +252,36 @@ class MsCVOperator(object):
 
         return A_neu, b_neu, idx_map
 
+    def compute_conservative_flux(self, p_ms, p_f):
+        """Computes a conservative flux field from the pressure obtained via
+        solution of the Neumann problem and the prolongated pressure.
+
+        Parameters
+        ----------
+        p_ms (numpy.ndarray): The pressure field obtained by solving the Neumann problem.
+        p_f (numpy.ndarray): The pressure field obtained by prolongating the coarse scale solution.
+        """
+        in_faces = self.finescale_mesh.faces.internal[:]
+        bfaces = self.finescale_mesh.faces.boundary[:]
+
+        # Get the internal primal faces.
+        primal_faces_flag = self.finescale_mesh.primal_face[:].flatten()
+        primal_faces = self.finescale_mesh.faces.all[primal_faces_flag == 1]
+        primal_in_faces = np.intersect1d(primal_faces, in_faces)
+
+        # Compute the flux on the internal faces using both
+        # the prolongated solution and the conservative one.
+        F_b = self._compute_ms_boundary_flux(p_f)
+        F_in_non_conserv = self._compute_ms_flux(p_f)
+        F_in_conserv = self._compute_ms_flux(p_ms)
+
+        F = np.zeros(len(self.finescale_mesh.faces))
+        F[bfaces] = F_b[:]
+        F[in_faces] = F_in_conserv[:]
+        F[primal_in_faces] = F_in_non_conserv[self.in_faces_map[primal_in_faces]]
+
+        return F
+
     def _set_neumann_problem_params(self):
         self._set_internal_vols_pairs()
         self._set_normal_vectors()

@@ -195,6 +195,7 @@ class MsCVOperator(object):
         )
 
         in_faces = self.finescale_mesh.faces.internal[:]
+        bfaces = self.finescale_mesh.faces.boundary[:]
         fine_vols_faces = self.finescale_mesh.volumes.adjacencies[:]
         fine_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
             all_fine_faces, 0, 0)
@@ -204,8 +205,10 @@ class MsCVOperator(object):
         in_primal_faces = np.intersect1d(primal_faces, in_faces)
 
         in_faces_flux = self._compute_ms_flux(p_f)
+        bfaces_flux = self._compute_ms_boundary_flux(p_f)
         F = np.zeros(len(self.finescale_mesh.faces))
         F[in_faces] = in_faces_flux[:]
+        F[bfaces] = bfaces_flux[:]
 
         it = 0
         for cvol in all_coarse_vols:
@@ -217,10 +220,9 @@ class MsCVOperator(object):
 
             # Assign the neumann BC for the internal primal faces.
             cvol_faces = fine_vols_faces[fine_idx].flatten()
+            cvol_bfaces = np.intersect1d(cvol_faces, primal_faces)
             cvol_internal_bfaces = np.intersect1d(cvol_faces, in_primal_faces)
-            cvol_internal_bfaces_idx = self.in_faces_map[cvol_internal_bfaces]
-            b_local += (self.div[:, cvol_internal_bfaces_idx] @
-                        F[cvol_internal_bfaces])[fine_idx]
+            b_local += (self.div[:, cvol_bfaces] @ F[cvol_bfaces])[fine_idx]
 
             # Handle internal faces with nodes on the global boundary.
             cvol_bnodes = fine_faces_nodes[cvol_internal_bfaces]

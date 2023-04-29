@@ -299,6 +299,76 @@ class MsCVOperator(object):
 
         return F_in
 
+    def _compute_ms_boundary_flux(self, p_ms):
+        """Computes the flux on the boundary faces of the finescale mesh.
+
+        Parameters
+        ----------
+        p_ms: The multiscale pressure field.
+
+        Returns
+        -------
+        F_D: The flux on the boundary faces of the finescale mesh.
+        """
+        bfaces = self.finescale_mesh.faces.boundary[:]
+        bfaces_dirichlet_values = self.finescale_mesh.dirichlet_faces[bfaces].flatten(
+        )
+        dirichlet_faces = bfaces[bfaces_dirichlet_values == 1]
+
+        dirichlet_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+            dirichlet_faces, 0, 0)
+        dirichlet_volumes = self.finescale_mesh.faces.bridge_adjacencies(
+            dirichlet_faces, 2, 3).flatten()
+
+        L = self.finescale_mesh.volumes.center[dirichlet_volumes]
+        I_idx, J_idx, K_idx = (
+            dirichlet_nodes[:, 0],
+            dirichlet_nodes[:, 1],
+            dirichlet_nodes[:, 2])
+        I, J, K = (
+            self.finescale_mesh.nodes.coords[I_idx],
+            self.finescale_mesh.nodes.coords[J_idx],
+            self.finescale_mesh.nodes.coords[K_idx])
+
+        N = 0.5 * np.cross(I - J, K - J)
+
+        LJ = J - L
+        N_test = np.sign(np.einsum("ij,ij->i", LJ, N))
+        I[N_test < 0], K[N_test < 0] = K[N_test < 0], I[N_test < 0]
+        N = 0.5 * np.cross(I - J, K - J)
+
+        N_norm = np.linalg.norm(N, axis=1)
+
+        tau_JK = np.cross(N, K - J)
+        tau_JI = np.cross(N, I - J)
+
+        h_L = np.abs(np.einsum("ij,ij->i", N, LJ) / N_norm)
+
+        K_all = self.finescale_mesh.permeability[dirichlet_volumes].reshape(
+            (len(dirichlet_volumes), 3, 3))
+
+        Kn_L_partial = np.einsum("ij,ikj->ik", N, K_all)
+        Kn_L = np.einsum("ij,ij->i", Kn_L_partial, N) / (N_norm ** 2)
+
+        Kt_JK = np.einsum("ij,ij->i", Kn_L_partial, tau_JK) / (N_norm ** 2)
+
+        Kt_JI = np.einsum("ij,ij->i", Kn_L_partial, tau_JI) / (N_norm ** 2)
+
+        D_JI = -(np.einsum("ij,ij->i", tau_JK, LJ)
+                 * Kn_L) / (2 * N_norm * h_L) + Kt_JK / 2
+        D_JK = -(np.einsum("ij,ij->i", tau_JI, LJ)
+                 * Kn_L) / (2 * N_norm * h_L) + Kt_JI / 2
+
+        gD = self.finescale_mesh.dirichlet_nodes[dirichlet_nodes.flatten()].reshape(
+            dirichlet_nodes.shape[0], 3)
+        gD_I, gD_J, gD_K = gD[:, 0], gD[:, 1], gD[:, 2]
+        gD_I[N_test < 0], gD_K[N_test < 0] = gD_K[N_test < 0], gD_I[N_test < 0]
+
+        F_D = -((Kn_L * N_norm / h_L) *
+                (p_ms[dirichlet_volumes] - gD_J) + D_JI * (gD_J - gD_I) + D_JK * (gD_K - gD_J))
+
+        return F_D
+
     def _handle_boundary_nodes_neu_problem(self, p_ms, faces, I, J, K):
         in_faces_idx = self.in_faces_map[faces]
 

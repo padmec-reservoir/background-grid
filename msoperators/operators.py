@@ -647,10 +647,16 @@ class MsCVOperator(object):
 
     def _set_div_operator(self):
         in_faces = self.finescale_mesh.faces.internal[:]
-        d = - np.ones(in_faces.shape[0] * 2)
+        bfaces = self.finescale_mesh.faces.boundary[:]
+        bvols = self.finescale_mesh.faces.bridge_adjacencies(
+            bfaces, 2, 3).flatten()
+
+        d = -np.ones(2 * in_faces.shape[0] + bfaces.shape[0])
         d[in_faces.shape[0]:] *= -1
-        in_faces_idx = np.hstack(
-            (np.arange(in_faces.shape[0]), np.arange(in_faces.shape[0])))
-        in_vols_flat = self.in_vols_pairs.flatten(order="F")
-        self.div = csr_matrix((d, (in_vols_flat, in_faces_idx)),
-                              shape=(len(self.finescale_mesh.volumes), in_faces.shape[0]))
+
+        in_vols_pairs_flat = self.in_vols_pairs.flatten(order="F")
+        vols_idx = np.hstack((in_vols_pairs_flat, bvols))
+        faces_idx = np.hstack((in_faces, in_faces, bfaces))
+
+        self.div = csr_matrix((d, (vols_idx, faces_idx)), shape=(
+            len(self.finescale_mesh.volumes), len(self.finescale_mesh.faces)))

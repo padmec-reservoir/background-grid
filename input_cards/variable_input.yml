@@ -117,3 +117,80 @@ pressure:
   data type: float
   sparse: True
   level: 0
+
+dual_mesh_face_flag:
+  type: volumes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0
+
+pressure_fine:
+  type: volumes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+prolongation:
+  type: volumes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+center_x:
+  type: volumes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+dirichlet_faces:
+  type: faces
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+dirichlet_nodes:
+  type: nodes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+dirichlet_nodes_flag:
+  type: nodes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0
+
+neumann_faces:
+  type: faces
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+neumann_nodes:
+  type: nodes
+  data size: 1
+  data type: float
+  sparse: True
+  level: 0
+
+neumann_nodes_flag:
+  type: nodes
+  data size: 1
+  data type: int
+  sparse: True
+  level: 0
+
+flux:
+  type: faces
+  data size: 3
+  data type: float
+  sparse: True
+  level: 0

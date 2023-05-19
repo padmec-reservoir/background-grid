@@ -55,8 +55,11 @@ class MsCVOperator(object):
         bg_volume_values = self.finescale_mesh.bg_volume[:].flatten()
         fine_vols_idx = self.finescale_mesh.volumes.all[:]
 
+        dirichlet_faces_flags = self.finescale_mesh.dirichlet_faces[:].flatten(
+        )
+        dirichlet_faces = self.finescale_mesh.faces.all[dirichlet_faces_flags == 1]
         dirichlet_idx = self.finescale_mesh.faces.bridge_adjacencies(
-            self.finescale_mesh.faces.boundary[:], 2, 3).flatten()
+            dirichlet_faces, 2, 3).flatten()
         dirichlet_primal_idx = self.finescale_mesh.bg_volume[dirichlet_idx].flatten(
         )
 

@@ -349,6 +349,10 @@ class MsCVOperator(object):
         bfaces_dirichlet_values = self.finescale_mesh.dirichlet_faces[bfaces].flatten(
         )
         dirichlet_faces = bfaces[bfaces_dirichlet_values == 1]
+        neumann_faces = np.setdiff1d(bfaces, dirichlet_faces)
+
+        F_b_all = np.zeros(len(self.finescale_mesh.faces))
+        F_b_all[neumann_faces] = self.finescale_mesh.neumann[neumann_faces].flatten()
 
         dirichlet_nodes = self.finescale_mesh.faces.bridge_adjacencies(
             dirichlet_faces, 0, 0)
@@ -401,8 +405,11 @@ class MsCVOperator(object):
 
         F_D = -((Kn_L * N_norm / h_L) *
                 (p_ms[dirichlet_volumes] - gD_J) + D_JI * (gD_J - gD_I) + D_JK * (gD_K - gD_J))
+        F_b_all[dirichlet_faces] = F_D[:]
 
-        return F_D
+        F_b = F_b_all[bfaces]
+
+        return F_b
 
     def _handle_boundary_nodes_neu_problem(self, p_ms, faces, I, J, K):
         in_faces_idx = self.in_faces_map[faces]

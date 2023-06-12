@@ -65,6 +65,10 @@ class MsCVOperator(object):
 
         P = lil_matrix((m, n))
         P[fine_vols_idx, bg_volume_values] = 1.0
+
+        # Set the restriction operator.
+        R = P.tocsr().transpose()
+
         P[dirichlet_idx, dirichlet_primal_idx] = 1.0
         P = P.tocsr()
 
@@ -156,11 +160,7 @@ class MsCVOperator(object):
             e = np.asarray(d[notG].max(axis=0).todense()).flatten()
             local_err = np.linalg.norm(e, ord=np.inf)
 
-            print("Current error: {}".format(local_err))
-
-        # Set the restriction operator as the transpose of the
-        # prolongation one.
-        R = P.transpose()
+            print("It {} / Current error: {}".format(niter, local_err))
 
         return P, R
 

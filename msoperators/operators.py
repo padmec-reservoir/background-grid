@@ -44,7 +44,7 @@ class MsCVOperator(object):
 
         self.finescale_mesh.bg_volume[:] = bg_volume_data
 
-    def compute_operators(self, tol=1e-3, maxiter=50):
+    def compute_operators(self, tol=1e-3, maxiter=50, precond=None):
         # Initialize mesh data.
         self._init_mesh_data()
 
@@ -73,9 +73,14 @@ class MsCVOperator(object):
         P = P.tocsr()
 
         # Compute the preconditioned matrix.
-        diag_A = self.A.diagonal()
-        A_row_sum = self.A.sum(axis=1).A.ravel()
-        A_precond = self.A - diags(A_row_sum - diag_A)
+        if precond == "enhancedmsrsb":
+            A_mod = self.A.multiply(self.A < 0)
+            A_mod_row_sum = A_mod.sum(axis=1).A.ravel()
+            A_precond = A_mod - diags(A_mod_row_sum)
+        else:
+            diag_A = self.A.diagonal()
+            A_row_sum = self.A.sum(axis=1).A.ravel()
+            A_precond = self.A - diags(A_row_sum - diag_A)
 
         # Initialize the increment Q of the prolongation operator.
         omega = 2 / 3

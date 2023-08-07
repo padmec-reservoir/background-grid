@@ -1,0 +1,6 @@
+.devcontainer/
+.vscode/
+*.pyc
+__pycache__
+/*.py
+results/

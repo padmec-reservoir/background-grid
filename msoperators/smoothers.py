@@ -19,10 +19,9 @@ class AMSUIterativeSmoother(object):
 
         A_c = self.R @ self.A @ self.P
         A_c_inv = inv(A_c)
-        B = self.P @ A_c_inv @ self.R
 
         while err > tol:
-            dp_n_1 = B @ r_n
+            dp_n_1 = self.P @ (A_c_inv @ (self.R @ r_n))
             r_n_1 = r_n - self.A @ dp_n_1
             dp_n_2, _ = bicgstab(self.A, r_n_1, M=A_ilu_op)
             p_next = dp_n_1 + dp_n_2

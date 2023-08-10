@@ -24,7 +24,7 @@ class AMSUIterativeSmoother(object):
         while err > tol:
             dp_n_1 = B @ r_n
             r_n_1 = r_n - self.A @ dp_n_1
-            dp_n_2 = bicgstab(self.A, r_n_1, M=A_ilu_op)
+            dp_n_2, _ = bicgstab(self.A, r_n_1, M=A_ilu_op)
             p_next = dp_n_1 + dp_n_2
             r_n = self.q - self.A @ p_next
             p_curr[:] = p_next[:]

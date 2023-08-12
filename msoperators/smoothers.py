@@ -27,6 +27,6 @@ class AMSUIterativeSmoother(object):
             p_next = p_curr + dp_n_1 + dp_n_2
             r_n = self.q - self.A @ p_next
             p_curr[:] = p_next[:]
-            err = np.linalg.norm(p_curr)
+            err = np.linalg.norm(r_n)
 
         return p_curr

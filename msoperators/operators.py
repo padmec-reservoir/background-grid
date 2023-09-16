@@ -4,9 +4,9 @@ from itertools import chain
 
 
 class MsCVOperator(object):
-    def __init__(self, finescale_mesh, coarse_mesh, support_regions,
+    def __init__(self, fine_mesh, coarse_mesh, support_regions,
                  support_boundaries, A, q, mpfad_weights):
-        self.finescale_mesh = finescale_mesh
+        self.fine_mesh = fine_mesh
         self.coarse_mesh = coarse_mesh
         self.support_regions = support_regions
         self.support_boundaries = support_boundaries
@@ -14,8 +14,8 @@ class MsCVOperator(object):
         self.q = q
 
         # MPFA-D parameters.
-        in_faces = self.finescale_mesh.faces.internal[:]
-        in_faces_map = -np.ones(len(self.finescale_mesh.faces), dtype=int)
+        in_faces = self.fine_mesh.faces.internal[:]
+        in_faces_map = -np.ones(len(self.fine_mesh.faces), dtype=int)
         in_faces_map[in_faces] = np.arange(in_faces.shape[0])
         self.in_faces_map = in_faces_map
 
@@ -32,35 +32,35 @@ class MsCVOperator(object):
         self.D_JK = None
 
     def _init_mesh_data(self):
-        all_volumes = self.finescale_mesh.core.all_volumes[:]
-        all_tags = self.finescale_mesh.core.mb.tag_get_tags_on_entity(
+        all_volumes = self.fine_mesh.core.all_volumes[:]
+        all_tags = self.fine_mesh.core.mb.tag_get_tags_on_entity(
             all_volumes[0])
 
         bg_volume_tag = [
             tag for tag in all_tags if tag.get_name() == "bg_volume"].pop()
 
-        bg_volume_data = self.finescale_mesh.core.mb.tag_get_data(bg_volume_tag,
+        bg_volume_data = self.fine_mesh.core.mb.tag_get_data(bg_volume_tag,
                                                                   all_volumes, flat=True)
 
-        self.finescale_mesh.bg_volume[:] = bg_volume_data
+        self.fine_mesh.bg_volume[:] = bg_volume_data
 
     def compute_operators(self, tol=1e-3, maxiter=50, precond=None):
         # Initialize mesh data.
         self._init_mesh_data()
 
         # Initialize prolongation operator with the initial guess.
-        m = len(self.finescale_mesh.volumes)
+        m = len(self.fine_mesh.volumes)
         n = len(self.coarse_mesh.volumes)
 
-        bg_volume_values = self.finescale_mesh.bg_volume[:].flatten()
-        fine_vols_idx = self.finescale_mesh.volumes.all[:]
+        bg_volume_values = self.fine_mesh.bg_volume[:].flatten()
+        fine_vols_idx = self.fine_mesh.volumes.all[:]
 
-        dirichlet_faces_flags = self.finescale_mesh.dirichlet_faces[:].flatten(
+        dirichlet_faces_flags = self.fine_mesh.dirichlet_faces[:].flatten(
         )
-        dirichlet_faces = self.finescale_mesh.faces.all[dirichlet_faces_flags == 1]
-        dirichlet_idx = self.finescale_mesh.faces.bridge_adjacencies(
+        dirichlet_faces = self.fine_mesh.faces.all[dirichlet_faces_flags == 1]
+        dirichlet_idx = self.fine_mesh.faces.bridge_adjacencies(
             dirichlet_faces, 2, 3).flatten()
-        dirichlet_primal_idx = self.finescale_mesh.bg_volume[dirichlet_idx].flatten(
+        dirichlet_primal_idx = self.fine_mesh.bg_volume[dirichlet_idx].flatten(
         )
 
         P = lil_matrix((m, n))
@@ -113,8 +113,8 @@ class MsCVOperator(object):
             I[j, I_j] = 1.0
 
         # Remove the centres
-        xP = np.nonzero(self.finescale_mesh.support_region_center[:])[0]
-        xP_idx = self.finescale_mesh.bg_volume[xP].flatten()
+        xP = np.nonzero(self.fine_mesh.support_region_center[:])[0]
+        xP_idx = self.fine_mesh.bg_volume[xP].flatten()
         M[xP_idx, xP] = 0
         H[xP_idx, xP] = 0
         I[xP_idx, xP] = 0
@@ -122,7 +122,7 @@ class MsCVOperator(object):
         # Force the volumes belonging to a single support region
         # to hold the maximum value of the basis function.
         vols_in_a_single_sr = np.nonzero(M.sum(axis=0).A.ravel() == 1)[0]
-        vols_in_a_single_sr_primal_ids = self.finescale_mesh.bg_volume[vols_in_a_single_sr].flatten(
+        vols_in_a_single_sr_primal_ids = self.fine_mesh.bg_volume[vols_in_a_single_sr].flatten(
         )
         M[vols_in_a_single_sr_primal_ids, vols_in_a_single_sr] = 0
         H[vols_in_a_single_sr_primal_ids, vols_in_a_single_sr] = 0
@@ -186,35 +186,35 @@ class MsCVOperator(object):
         self._set_neumann_problem_params()
 
         A_blocks = []
-        b_neu = np.zeros(len(self.finescale_mesh.volumes))
+        b_neu = np.zeros(len(self.fine_mesh.volumes))
 
-        local_idx_map = np.zeros(len(self.finescale_mesh.volumes))
+        local_idx_map = np.zeros(len(self.fine_mesh.volumes))
 
-        all_fine_vols = self.finescale_mesh.volumes.all[:]
-        all_fine_faces = self.finescale_mesh.faces.all[:]
+        all_fine_vols = self.fine_mesh.volumes.all[:]
+        all_fine_faces = self.fine_mesh.faces.all[:]
         all_coarse_vols = self.coarse_mesh.volumes.all[:]
         dirichlet_vols = np.nonzero(
-            self.finescale_mesh.dirichlet[:].flatten())[0]
-        coarse_volume_values = self.finescale_mesh.bg_volume[:].flatten()
+            self.fine_mesh.dirichlet[:].flatten())[0]
+        coarse_volume_values = self.fine_mesh.bg_volume[:].flatten()
 
         primal_centers_fine_idx = np.nonzero(
-            self.finescale_mesh.primal_volume_center[:])[0]
-        primal_centers_coarse_idx = self.finescale_mesh.bg_volume[primal_centers_fine_idx].flatten(
+            self.fine_mesh.primal_volume_center[:])[0]
+        primal_centers_coarse_idx = self.fine_mesh.bg_volume[primal_centers_fine_idx].flatten(
         )
 
-        in_faces = self.finescale_mesh.faces.internal[:]
-        bfaces = self.finescale_mesh.faces.boundary[:]
-        fine_vols_faces = self.finescale_mesh.volumes.adjacencies[:]
-        fine_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        in_faces = self.fine_mesh.faces.internal[:]
+        bfaces = self.fine_mesh.faces.boundary[:]
+        fine_vols_faces = self.fine_mesh.volumes.adjacencies[:]
+        fine_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
             all_fine_faces, 0, 0)
 
-        primal_faces_flag = self.finescale_mesh.primal_face[:].flatten()
+        primal_faces_flag = self.fine_mesh.primal_face[:].flatten()
         primal_faces = all_fine_faces[primal_faces_flag == 1]
         in_primal_faces = np.intersect1d(primal_faces, in_faces)
 
         in_faces_flux = self._compute_ms_flux(p_f)
         bfaces_flux = self._compute_ms_boundary_flux(p_f)
-        F = np.zeros(len(self.finescale_mesh.faces))
+        F = np.zeros(len(self.fine_mesh.faces))
         F[in_faces] = in_faces_flux[:]
         F[bfaces] = bfaces_flux[:]
 
@@ -271,12 +271,12 @@ class MsCVOperator(object):
         p_ms (numpy.ndarray): The pressure field obtained by solving the Neumann problem.
         p_f (numpy.ndarray): The pressure field obtained by prolongating the coarse scale solution.
         """
-        in_faces = self.finescale_mesh.faces.internal[:]
-        bfaces = self.finescale_mesh.faces.boundary[:]
+        in_faces = self.fine_mesh.faces.internal[:]
+        bfaces = self.fine_mesh.faces.boundary[:]
 
         # Get the internal primal faces.
-        primal_faces_flag = self.finescale_mesh.primal_face[:].flatten()
-        primal_faces = self.finescale_mesh.faces.all[primal_faces_flag == 1]
+        primal_faces_flag = self.fine_mesh.primal_face[:].flatten()
+        primal_faces = self.fine_mesh.faces.all[primal_faces_flag == 1]
         primal_in_faces = np.intersect1d(primal_faces, in_faces)
 
         # Compute the flux on the internal faces using both
@@ -285,7 +285,7 @@ class MsCVOperator(object):
         F_in_non_conserv = self._compute_ms_flux(p_f)
         F_in_conserv = self._compute_ms_flux(p_ms)
 
-        F = np.zeros(len(self.finescale_mesh.faces))
+        F = np.zeros(len(self.fine_mesh.faces))
         F[bfaces] = F_b[:]
         F[in_faces] = F_in_conserv[:]
         F[primal_in_faces] = F_in_non_conserv[self.in_faces_map[primal_in_faces]]
@@ -314,8 +314,8 @@ class MsCVOperator(object):
         L, R = self.in_vols_pairs[:, 0], self.in_vols_pairs[:, 1]
         uL, uR = p_ms[L], p_ms[R]
 
-        in_faces = self.finescale_mesh.faces.internal[:]
-        in_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        in_faces = self.fine_mesh.faces.internal[:]
+        in_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
             in_faces, 0, 0)
         I, J, K = (
             in_faces_nodes[:, 0],
@@ -350,29 +350,29 @@ class MsCVOperator(object):
         -------
         F_D: The flux on the boundary faces of the finescale mesh.
         """
-        bfaces = self.finescale_mesh.faces.boundary[:]
-        bfaces_dirichlet_values = self.finescale_mesh.dirichlet_faces[bfaces].flatten(
+        bfaces = self.fine_mesh.faces.boundary[:]
+        bfaces_dirichlet_values = self.fine_mesh.dirichlet_faces[bfaces].flatten(
         )
         dirichlet_faces = bfaces[bfaces_dirichlet_values == 1]
         neumann_faces = np.setdiff1d(bfaces, dirichlet_faces)
 
-        F_b_all = np.zeros(len(self.finescale_mesh.faces))
-        F_b_all[neumann_faces] = self.finescale_mesh.neumann[neumann_faces].flatten()
+        F_b_all = np.zeros(len(self.fine_mesh.faces))
+        F_b_all[neumann_faces] = self.fine_mesh.neumann[neumann_faces].flatten()
 
-        dirichlet_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        dirichlet_nodes = self.fine_mesh.faces.bridge_adjacencies(
             dirichlet_faces, 0, 0)
-        dirichlet_volumes = self.finescale_mesh.faces.bridge_adjacencies(
+        dirichlet_volumes = self.fine_mesh.faces.bridge_adjacencies(
             dirichlet_faces, 2, 3).flatten()
 
-        L = self.finescale_mesh.volumes.center[dirichlet_volumes]
+        L = self.fine_mesh.volumes.center[dirichlet_volumes]
         I_idx, J_idx, K_idx = (
             dirichlet_nodes[:, 0],
             dirichlet_nodes[:, 1],
             dirichlet_nodes[:, 2])
         I, J, K = (
-            self.finescale_mesh.nodes.coords[I_idx],
-            self.finescale_mesh.nodes.coords[J_idx],
-            self.finescale_mesh.nodes.coords[K_idx])
+            self.fine_mesh.nodes.coords[I_idx],
+            self.fine_mesh.nodes.coords[J_idx],
+            self.fine_mesh.nodes.coords[K_idx])
 
         N = 0.5 * np.cross(I - J, K - J)
 
@@ -388,7 +388,7 @@ class MsCVOperator(object):
 
         h_L = np.abs(np.einsum("ij,ij->i", N, LJ) / N_norm)
 
-        K_all = self.finescale_mesh.permeability[dirichlet_volumes].reshape(
+        K_all = self.fine_mesh.permeability[dirichlet_volumes].reshape(
             (len(dirichlet_volumes), 3, 3))
 
         Kn_L_partial = np.einsum("ij,ikj->ik", N, K_all)
@@ -403,7 +403,7 @@ class MsCVOperator(object):
         D_JK = -(np.einsum("ij,ij->i", tau_JI, LJ)
                  * Kn_L) / (2 * N_norm * h_L) + Kt_JI / 2
 
-        gD = self.finescale_mesh.dirichlet_nodes[dirichlet_nodes.flatten()].reshape(
+        gD = self.fine_mesh.dirichlet_nodes[dirichlet_nodes.flatten()].reshape(
             dirichlet_nodes.shape[0], 3)
         gD_I, gD_J, gD_K = gD[:, 0], gD[:, 1], gD[:, 2]
         gD_I[N_test < 0], gD_K[N_test < 0] = gD_K[N_test < 0], gD_I[N_test < 0]
@@ -444,7 +444,7 @@ class MsCVOperator(object):
             (self.D_JI[in_faces_idx] - self.D_JK[in_faces_idx]) * uJ
         K_term = -0.5 * Keq_N * self.D_JI[in_faces_idx] * uK
 
-        q = np.zeros(len(self.finescale_mesh.volumes))
+        q = np.zeros(len(self.fine_mesh.volumes))
 
         np.add.at(q, I_left_vol, I_term)
         np.add.at(q, I_right_vol, -I_term)
@@ -469,8 +469,8 @@ class MsCVOperator(object):
         -------
         None
         """
-        internal_faces = self.finescale_mesh.faces.internal[:]
-        self.in_vols_pairs = self.finescale_mesh.faces.bridge_adjacencies(
+        internal_faces = self.fine_mesh.faces.internal[:]
+        self.in_vols_pairs = self.fine_mesh.faces.bridge_adjacencies(
             internal_faces, 2, 3)
 
     def _set_normal_distances(self):
@@ -485,15 +485,15 @@ class MsCVOperator(object):
         -------
         None
         """
-        internal_faces = self.finescale_mesh.faces.internal[:]
+        internal_faces = self.fine_mesh.faces.internal[:]
 
-        L = self.finescale_mesh.volumes.center[self.in_vols_pairs[:, 0]]
-        R = self.finescale_mesh.volumes.center[self.in_vols_pairs[:, 1]]
+        L = self.fine_mesh.volumes.center[self.in_vols_pairs[:, 0]]
+        R = self.fine_mesh.volumes.center[self.in_vols_pairs[:, 1]]
 
-        in_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        in_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
             internal_faces, 0, 0)
         J_idx = in_faces_nodes[:, 1]
-        J = self.finescale_mesh.nodes.coords[J_idx]
+        J = self.fine_mesh.nodes.coords[J_idx]
 
         LJ = J - L
         LR = J - R
@@ -514,22 +514,22 @@ class MsCVOperator(object):
         None
         """
         # Retrieve the internal faces.
-        internal_faces = self.finescale_mesh.faces.internal[:]
+        internal_faces = self.fine_mesh.faces.internal[:]
 
         # Retrieve the points that form the components of the normal vectors.
-        internal_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        internal_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
             internal_faces,
             0, 0)
         I_idx = internal_faces_nodes[:, 0]
         J_idx = internal_faces_nodes[:, 1]
         K_idx = internal_faces_nodes[:, 2]
 
-        I = self.finescale_mesh.nodes.coords[I_idx]
-        J = self.finescale_mesh.nodes.coords[J_idx]
-        K = self.finescale_mesh.nodes.coords[K_idx]
+        I = self.fine_mesh.nodes.coords[I_idx]
+        J = self.fine_mesh.nodes.coords[J_idx]
+        K = self.fine_mesh.nodes.coords[K_idx]
 
         n_vols_pairs = len(internal_faces)
-        internal_volumes_centers_flat = self.finescale_mesh.volumes.center[self.in_vols_pairs.flatten(
+        internal_volumes_centers_flat = self.fine_mesh.volumes.center[self.in_vols_pairs.flatten(
         )]
         internal_volumes_centers = internal_volumes_centers_flat.reshape((
             n_vols_pairs,
@@ -557,14 +557,14 @@ class MsCVOperator(object):
         -------
         None
         """
-        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+        n_vols_pairs = len(self.fine_mesh.faces.internal)
 
         lvols = self.in_vols_pairs[:, 0]
         rvols = self.in_vols_pairs[:, 1]
 
-        KL = self.finescale_mesh.permeability[lvols].reshape(
+        KL = self.fine_mesh.permeability[lvols].reshape(
             (n_vols_pairs, 3, 3))
-        KR = self.finescale_mesh.permeability[rvols].reshape(
+        KR = self.fine_mesh.permeability[rvols].reshape(
             (n_vols_pairs, 3, 3))
 
         KnL_pre = np.einsum("ij,ikj->ik", self.Ns, KL)
@@ -589,16 +589,16 @@ class MsCVOperator(object):
         A tuple of arrays containing the projections to the left and
         to the right of the internal faces.
         """
-        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+        n_vols_pairs = len(self.fine_mesh.faces.internal)
 
-        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+        n_vols_pairs = len(self.fine_mesh.faces.internal)
 
         lvols = self.in_vols_pairs[:, 0]
         rvols = self.in_vols_pairs[:, 1]
 
-        KL = self.finescale_mesh.permeability[lvols].reshape(
+        KL = self.fine_mesh.permeability[lvols].reshape(
             (n_vols_pairs, 3, 3))
-        KR = self.finescale_mesh.permeability[rvols].reshape(
+        KR = self.fine_mesh.permeability[rvols].reshape(
             (n_vols_pairs, 3, 3))
 
         Kt_ij_L_pre = np.einsum("ij,ikj->ik", self.Ns, KL)
@@ -622,26 +622,26 @@ class MsCVOperator(object):
         -------
         A tuple of numpy arrays containing the terms D_JK and D_JI.
         """
-        n_vols_pairs = len(self.finescale_mesh.faces.internal)
+        n_vols_pairs = len(self.fine_mesh.faces.internal)
 
         in_vols_pairs_flat = self.in_vols_pairs.flatten()
-        in_vols_centers_flat = self.finescale_mesh.volumes.center[in_vols_pairs_flat]
+        in_vols_centers_flat = self.fine_mesh.volumes.center[in_vols_pairs_flat]
         in_vols_centers = in_vols_centers_flat.reshape((n_vols_pairs, 2, 3))
 
         LR = in_vols_centers[:, 1, :] - in_vols_centers[:, 0, :]
 
-        internal_faces = self.finescale_mesh.faces.internal[:]
+        internal_faces = self.fine_mesh.faces.internal[:]
 
-        internal_faces_nodes = self.finescale_mesh.faces.bridge_adjacencies(
+        internal_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
             internal_faces,
             0, 0)
         I_idx = internal_faces_nodes[:, 0]
         J_idx = internal_faces_nodes[:, 1]
         K_idx = internal_faces_nodes[:, 2]
 
-        I = self.finescale_mesh.nodes.coords[I_idx]
-        J = self.finescale_mesh.nodes.coords[J_idx]
-        K = self.finescale_mesh.nodes.coords[K_idx]
+        I = self.fine_mesh.nodes.coords[I_idx]
+        J = self.fine_mesh.nodes.coords[J_idx]
+        K = self.fine_mesh.nodes.coords[K_idx]
 
         tau_JK = np.cross(self.Ns, K - J)
         tau_JI = np.cross(self.Ns, I - J)
@@ -663,9 +663,9 @@ class MsCVOperator(object):
         self.D_JI = D_JI
 
     def _set_div_operator(self):
-        in_faces = self.finescale_mesh.faces.internal[:]
-        bfaces = self.finescale_mesh.faces.boundary[:]
-        bvols = self.finescale_mesh.faces.bridge_adjacencies(
+        in_faces = self.fine_mesh.faces.internal[:]
+        bfaces = self.fine_mesh.faces.boundary[:]
+        bvols = self.fine_mesh.faces.bridge_adjacencies(
             bfaces, 2, 3).flatten()
 
         d = -np.ones(2 * in_faces.shape[0] + bfaces.shape[0])
@@ -676,7 +676,7 @@ class MsCVOperator(object):
         faces_idx = np.hstack((in_faces, in_faces, bfaces))
 
         self.div = csr_matrix((d, (vols_idx, faces_idx)), shape=(
-            len(self.finescale_mesh.volumes), len(self.finescale_mesh.faces)))
+            len(self.fine_mesh.volumes), len(self.fine_mesh.faces)))
 
 
 class MsRSBOperator(object):

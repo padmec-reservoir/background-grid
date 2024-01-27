@@ -179,8 +179,7 @@ class MultiscaleCoarseMeshGenerator(object):
         coarse_faces_neighbors = self.bg_mesh.faces.bridge_adjacencies(coarse_faces, 1, 2)
 
         num_of_coarse_vols = coarse_volumes.shape[0]
-        num_faces_of_coarse_vol = coarse_volumes_adjacencies.shape[1]
-        num_of_coarse_faces_pairs = num_faces_of_coarse_vol * 2
+        num_of_coarse_faces_pairs = self.bg_mesh.volumes.bridge_adjacencies(0, 3, 1).shape[0]
         faces_centers_pairs_per_volume = np.empty((num_of_coarse_vols, num_of_coarse_faces_pairs, 2), dtype=int)
 
         for coarse_vol_adjacencies, coarse_vol in zip(coarse_volumes_adjacencies, coarse_volumes):

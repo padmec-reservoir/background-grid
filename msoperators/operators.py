@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix, diags, block_diag
+from scipy.sparse.linalg import spsolve
 from itertools import chain
 
 
@@ -169,47 +170,29 @@ class MsCVOperator(object):
 
         return P, R
 
-    def assemble_neumann_problem(self, p_f):
-        """Assemble the Neumann problem to compute a conservative
-        finescale pressure field.
-
-        Parameters
-        ----------
-        p_f: The multiscale solution for the pressure field, i.e., the prolongated solution.
-
-        Returns
-        -------
-        A_neu: The LHS of the Neumann problem as a block diagonal matrix.
-        b_neu: The RHS of the Neumann problem.
-        idx_map: The mapping from the local indices to the global sorted indices.
-        """
+    def solve_neumann_problem(self, p_f):
         self._set_neumann_problem_params()
 
-        A_blocks = []
-        b_neu = np.zeros(len(self.fine_mesh.volumes))
+        p_cons = np.zeros(len(self.fine_mesh.volumes))
 
-        local_idx_map = np.zeros(len(self.fine_mesh.volumes))
-
-        all_fine_vols = self.fine_mesh.volumes.all[:]
-        all_fine_faces = self.fine_mesh.faces.all[:]
-        all_coarse_vols = self.coarse_mesh.volumes.all[:]
+        fine_vols = self.fine_mesh.volumes.all[:]
+        fine_faces = self.fine_mesh.faces.all[:]
+        coarse_vols = self.coarse_mesh.volumes.all[:]
         dirichlet_vols = np.nonzero(
             self.fine_mesh.dirichlet[:].flatten())[0]
-        coarse_volume_values = self.fine_mesh.bg_volume[:].flatten()
+        primal_vols_flags = self.fine_mesh.bg_volume[:].flatten()
 
-        primal_centers_fine_idx = np.nonzero(
+        primal_centers = np.nonzero(
             self.fine_mesh.primal_volume_center[:])[0]
-        primal_centers_coarse_idx = self.fine_mesh.bg_volume[primal_centers_fine_idx].flatten(
-        )
+        primal_centers_coarse_idx = primal_vols_flags[primal_centers]
 
         in_faces = self.fine_mesh.faces.internal[:]
         bfaces = self.fine_mesh.faces.boundary[:]
         fine_vols_faces = self.fine_mesh.volumes.adjacencies[:]
-        fine_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(
-            all_fine_faces, 0, 0)
+        fine_faces_nodes = self.fine_mesh.faces.bridge_adjacencies(fine_faces, 0, 0)
 
-        primal_faces_flag = self.fine_mesh.primal_face[:].flatten()
-        primal_faces = all_fine_faces[primal_faces_flag == 1]
+        primal_faces_flags = self.fine_mesh.primal_face[:].flatten()
+        primal_faces = fine_faces[primal_faces_flags == 1]
         in_primal_faces = np.intersect1d(primal_faces, in_faces)
 
         in_faces_flux = self._compute_ms_flux(p_f)
@@ -218,49 +201,40 @@ class MsCVOperator(object):
         F[in_faces] = in_faces_flux[:]
         F[bfaces] = bfaces_flux[:]
 
-        it = 0
-        for cvol in all_coarse_vols:
+        for i in coarse_vols:
             # Assemble the local problems by slicing the part of the main
             # problem concerning only the fine cells in the coarse cell.
-            fine_idx = all_fine_vols[coarse_volume_values == cvol]
-            A_local = self.A[fine_idx[:, None], fine_idx]
-            b_local = self.q[fine_idx]
+            OmegaP_i = fine_vols[primal_vols_flags == i]
+            A_local = self.A[OmegaP_i[:, None], OmegaP_i]
+            b_local = self.q[OmegaP_i]
 
             # Assign the neumann BC for the internal primal faces.
-            cvol_faces = fine_vols_faces[fine_idx].flatten()
+            cvol_faces = fine_vols_faces[OmegaP_i].flatten()
             cvol_bfaces = np.intersect1d(cvol_faces, primal_faces)
             cvol_internal_bfaces = np.intersect1d(cvol_faces, in_primal_faces)
-            b_local += (self.div[:, cvol_bfaces] @ F[cvol_bfaces])[fine_idx]
+            b_local += (self.div[:, cvol_bfaces] @ F[cvol_bfaces])[OmegaP_i]
 
             # Handle internal faces with nodes on the global boundary.
             cvol_bnodes = fine_faces_nodes[cvol_internal_bfaces]
             I, J, K = cvol_bnodes[:, 0], cvol_bnodes[:, 1], cvol_bnodes[:, 2]
             q_local = self._handle_boundary_nodes_neu_problem(
                 p_f, cvol_internal_bfaces, I, J, K)
-            b_local += q_local[fine_idx]
+            b_local += q_local[OmegaP_i]
 
             # If the coarse cell does not contain any dirichlet BC, then
             # force the primal center to hold the value of the prolongated
             # pressure.
-            if len(np.intersect1d(fine_idx, dirichlet_vols, assume_unique=True)) == 0:
-                cvol_center = primal_centers_fine_idx[primal_centers_coarse_idx == cvol][0]
+            if len(np.intersect1d(OmegaP_i, dirichlet_vols, assume_unique=True)) == 0:
+                cvol_center = primal_centers[primal_centers_coarse_idx == i][0]
                 cvol_center_local_idx = np.argwhere(
-                    fine_idx == cvol_center)[0, 0]
+                    OmegaP_i == cvol_center)[0, 0]
                 A_local[cvol_center_local_idx, :] = 0
                 A_local[cvol_center_local_idx, cvol_center_local_idx] = 1
                 b_local[cvol_center_local_idx] = p_f[cvol_center]
 
-            # Add the local problem to the global block matrix.
-            A_blocks.append(A_local)
-            b_neu[it:(it + len(fine_idx))] = b_local[:]
-            local_idx_map[it:(it + len(fine_idx))] = fine_idx[:]
+            p_cons[OmegaP_i] = spsolve(A_local, b_local)
 
-            it += len(fine_idx)
-
-        A_neu = block_diag(A_blocks, format="csr")
-        idx_map = np.argsort(local_idx_map)
-
-        return A_neu, b_neu, idx_map
+        return p_cons
 
     def compute_conservative_flux(self, p_ms, p_f):
         """Computes a conservative flux field from the pressure obtained via

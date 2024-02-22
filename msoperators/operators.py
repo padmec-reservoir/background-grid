@@ -643,7 +643,7 @@ class MsCVOperator(object):
             bfaces, 2, 3).flatten()
 
         d = -np.ones(2 * in_faces.shape[0] + bfaces.shape[0])
-        d[in_faces.shape[0]:] *= -1
+        d[0:in_faces.shape[0]] *= -1
 
         in_vols_pairs_flat = self.in_vols_pairs.flatten(order="F")
         vols_idx = np.hstack((in_vols_pairs_flat, bvols))

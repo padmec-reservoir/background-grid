@@ -196,10 +196,10 @@ class MsCVOperator(object):
         in_primal_faces = np.intersect1d(primal_faces, in_faces)
 
         in_faces_flux = self._compute_ms_flux(p_f)
-        bfaces_flux = self._compute_ms_boundary_flux(p_f)
+        F_b, F_b_rhs = self._compute_ms_boundary_flux(p_f)
         F = np.zeros(len(self.fine_mesh.faces))
         F[in_faces] = in_faces_flux[:]
-        F[bfaces] = bfaces_flux[:]
+        F[bfaces] = F_b + F_b_rhs
 
         for i in coarse_vols:
             # Assemble the local problems by slicing the part of the main
@@ -255,16 +255,19 @@ class MsCVOperator(object):
 
         # Compute the flux on the internal faces using both
         # the prolongated solution and the conservative one.
-        F_b = self._compute_ms_boundary_flux(p_f)
+        F_b, F_b_rhs = self._compute_ms_boundary_flux(p_f)
         F_in_non_conserv = self._compute_ms_flux(p_f)
         F_in_conserv = self._compute_ms_flux(p_ms)
 
         F = np.zeros(len(self.fine_mesh.faces))
+        F_rhs = np.zeros(len(self.fine_mesh.faces))
+
         F[bfaces] = F_b[:]
         F[in_faces] = F_in_conserv[:]
         F[primal_in_faces] = F_in_non_conserv[self.in_faces_map[primal_in_faces]]
+        F_rhs[bfaces] = F_b_rhs[:]
 
-        return F
+        return F, F_rhs
 
     def _set_neumann_problem_params(self):
         self._set_internal_vols_pairs()
@@ -382,13 +385,17 @@ class MsCVOperator(object):
         gD_I, gD_J, gD_K = gD[:, 0], gD[:, 1], gD[:, 2]
         gD_I[N_test < 0], gD_K[N_test < 0] = gD_K[N_test < 0], gD_I[N_test < 0]
 
-        F_D = -((Kn_L * N_norm / h_L) *
-                (p_ms[dirichlet_volumes] - gD_J) + D_JI * (gD_J - gD_I) + D_JK * (gD_K - gD_J))
-        F_b_all[dirichlet_faces] = F_D[:]
+        F_D_in = -(Kn_L * N_norm / h_L) * p_ms[dirichlet_volumes]
+        F_D_bc = (Kn_L * N_norm / h_L) * gD_J - D_JI * (gD_J - gD_I) - D_JK * (gD_K - gD_J)
+        F_b_all[dirichlet_faces] = F_D_in[:]
 
         F_b = F_b_all[bfaces]
 
-        return F_b
+        F_b_rhs = np.zeros(len(self.fine_mesh.faces))
+        F_b_rhs[dirichlet_faces] = F_D_bc[:]
+        F_b_rhs = F_b_rhs[bfaces]
+
+        return F_b, F_b_rhs
 
     def _handle_boundary_nodes_neu_problem(self, p_ms, faces, I, J, K):
         in_faces_idx = self.in_faces_map[faces]
